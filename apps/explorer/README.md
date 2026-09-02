@@ -29,7 +29,7 @@ In the [Privy dashboard](https://dashboard.privy.io) the app needs:
 - Allowed origins for every domain the explorer runs on.
 - Funding enabled on the Funding page for the wallet menu's "Buy USDC with card" and the dialog's top-up buttons. Card onramps use Stripe and MoonPay by default; a Coinbase Developer Platform key adds exchange transfers.
 
-Card purchases and gas top-ups work for any connected wallet, including external ones that never logged in to Privy. Privy's transfer picker (exchange or another wallet) needs a Privy login.
+Card purchases, gas top-ups and Privy's transfer picker all need a Privy login: a wallet that only connected is asked to log in first, and the purchase continues after login. Paying USDC that a connected wallet already holds needs no login.
 
 **Setup:**
 

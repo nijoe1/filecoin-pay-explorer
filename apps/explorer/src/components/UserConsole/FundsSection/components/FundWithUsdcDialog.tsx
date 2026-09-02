@@ -137,8 +137,9 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   const { connectWallet } = useConnectWallet();
   const { addFunds } = useAddFunds();
   const { fund: fundWithCard } = useFiatOnramp();
-  // Privy's unified transfer picker refuses users without a Privy login; the card onramp does not.
-  const { authenticated: hasPrivyLogin } = usePrivy();
+  // Every Privy funding flow (card, transfer picker, gas) needs a Privy session,
+  // so a connect-only wallet is asked to log in first.
+  const { authenticated: hasPrivyLogin, login } = usePrivy();
   const { fundWallet } = useFundWallet();
   const { setTopUpActive } = useTopUpActivity();
   const { requestReview, reviewDialog } = useTransactionReview();
@@ -728,14 +729,14 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                   </span>
                   <span className='flex flex-wrap gap-2'>
                     <Button
-                      aria-label='Buy USDC with card'
+                      aria-label={hasPrivyLogin ? "Buy USDC with card" : "Log in to buy with card"}
                       disabled={isBusy}
-                      onClick={() => void buyUsdcWithCard()}
+                      onClick={() => (hasPrivyLogin ? void buyUsdcWithCard() : login())}
                       size='compact'
                       type='button'
                       variant='primary'
                     >
-                      Buy with card
+                      {hasPrivyLogin ? "Buy with card" : "Log in to buy with card"}
                     </Button>
                     {hasPrivyLogin && (
                       <Button
@@ -802,14 +803,14 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                     gas and fees.
                   </span>
                   <Button
-                    aria-label='Add gas with Privy'
+                    aria-label={hasPrivyLogin ? "Add gas with Privy" : "Log in to add gas"}
                     disabled={isBusy}
-                    onClick={() => void addGasToPrivyWallet()}
+                    onClick={() => (hasPrivyLogin ? void addGasToPrivyWallet() : login())}
                     size='compact'
                     type='button'
                     variant='tertiary'
                   >
-                    Add {gasTopUpAmount} {nativeSymbol}
+                    {hasPrivyLogin ? `Add ${gasTopUpAmount} ${nativeSymbol}` : "Log in to add gas"}
                   </Button>
                 </div>
               )}

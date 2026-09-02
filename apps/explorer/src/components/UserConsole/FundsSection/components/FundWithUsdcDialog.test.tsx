@@ -16,6 +16,8 @@ const EXTERNAL = "0x3333333333333333333333333333333333333333";
 
 const privy = vi.hoisted(() => ({
   addFunds: vi.fn(),
+  authenticated: true,
+  login: vi.fn(),
   connectWallet: vi.fn(),
   fundWallet: vi.fn(),
   fundWithCard: vi.fn(),
@@ -31,7 +33,7 @@ vi.mock("@privy-io/react-auth", () => ({
   useAddFunds: () => ({ addFunds: privy.addFunds }),
   useConnectWallet: () => ({ connectWallet: privy.connectWallet }),
   useFiatOnramp: () => ({ fund: privy.fundWithCard }),
-  usePrivy: () => ({ authenticated: true }),
+  usePrivy: () => ({ authenticated: privy.authenticated, login: privy.login }),
   useFundWallet: () => ({ fundWallet: privy.fundWallet }),
   useWallets: () => ({ ready: true, wallets: privy.wallets }),
 }));
@@ -97,6 +99,7 @@ vi.mock("@filecoin-pay/ui/components/select", () => ({
 }));
 
 beforeEach(() => {
+  privy.authenticated = true;
   privy.wallets = [
     { address: EMBEDDED, walletClientType: "privy" },
     { address: EXTERNAL, walletClientType: "metamask" },
@@ -163,6 +166,24 @@ describe("FundWithUsdcDialog", () => {
       environment: "production",
     });
     expect(topUpActivity.setTopUpActive).toHaveBeenCalledWith(true);
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("asks a connect-only wallet to log in before buying USDC with card", async () => {
+    privy.authenticated = false;
+    let renderer!: ReturnType<typeof create>;
+    await act(async () => {
+      renderer = create(<FundWithUsdcDialog accountId='account' onOpenChange={() => undefined} open />);
+    });
+
+    expect(renderer.root.findAllByProps({ "aria-label": "Buy USDC with card" }, { deep: false })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ "aria-label": "Add USDC with Privy" }, { deep: false })).toHaveLength(0);
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Log in to buy with card" }).props.onClick();
+    });
+    expect(privy.login).toHaveBeenCalledOnce();
+    expect(privy.fundWithCard).not.toHaveBeenCalled();
 
     await act(async () => renderer.unmount());
   });

@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@filecoin-pay/ui/components/dropdown-menu";
-import { useConnectWallet, useExportWallet, useFiatOnramp, usePrivy } from "@privy-io/react-auth";
+import { useConnectWallet, useExportWallet, useFiatOnramp, useLogin, usePrivy } from "@privy-io/react-auth";
 import {
   ArrowUpRightIcon,
   Check,
@@ -21,7 +21,7 @@ import {
   ShieldCheck,
   Wallet,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { type Address, erc20Abi, formatEther } from "viem";
 import { useAccount, useBalance, useDisconnect, useReadContract, useWalletClient } from "wagmi";
@@ -77,7 +77,7 @@ const Balance = () => {
     }
   };
 
-  /** Privy's card onramp into the embedded wallet on Base, then straight into USDC funding. */
+  /** Privy's card onramp into the console wallet on Base, then straight into USDC funding. */
   const buyUsdcWithCard = async () => {
     if (!address) return;
     try {
@@ -97,6 +97,22 @@ const Balance = () => {
         });
       }
     }
+  };
+
+  // Privy's onramp needs a Privy session, so a connect-only wallet logs in
+  // first and the purchase continues once login completes.
+  const cardPurchaseAfterLogin = useRef(false);
+  const { login } = useLogin({
+    onComplete: () => {
+      if (!cardPurchaseAfterLogin.current) return;
+      cardPurchaseAfterLogin.current = false;
+      void buyUsdcWithCard();
+    },
+  });
+  const buyUsdcWithCardOrLogin = () => {
+    if (authenticated) return buyUsdcWithCard();
+    cardPurchaseAfterLogin.current = true;
+    login();
   };
 
   const addUsdfcToken = async () => {
@@ -169,10 +185,11 @@ const Balance = () => {
           <Coins />
           <span className='text-base text-zinc-950'>Fund with USDC</span>
         </DropdownMenuItem>
-        {/* Privy's card onramp delivers to any address, so external wallets get it too. */}
-        <DropdownMenuItem onClick={() => void buyUsdcWithCard()} className='cursor-pointer py-2'>
+        <DropdownMenuItem onClick={() => void buyUsdcWithCardOrLogin()} className='cursor-pointer py-2'>
           <CreditCard />
-          <span className='text-base text-zinc-950'>Buy USDC with card</span>
+          <span className='text-base text-zinc-950'>
+            {authenticated ? "Buy USDC with card" : "Log in to buy with card"}
+          </span>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => connectWallet()} className='cursor-pointer py-2'>
           <PlugZap />
