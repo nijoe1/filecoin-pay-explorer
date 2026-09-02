@@ -9,38 +9,30 @@ import {
   DialogTitle,
 } from "@filecoin-pay/ui/components/dialog";
 import { Label } from "@filecoin-pay/ui/components/label";
-import { AlertCircle, CheckCircle2, Loader2, Wallet } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { erc20Abi, formatUnits, type Hex, isAddress, maxUint256, parseUnits } from "viem";
-import { useAccount, usePublicClient, useReadContract, useReadContracts, useWalletClient } from "wagmi";
+import { Loader2, Wallet } from "lucide-react";
+import { useState } from "react";
+import { erc20Abi, formatUnits, parseUnits } from "viem";
+import { useAccount, usePublicClient, useReadContract, useWalletClient } from "wagmi";
 import { useTransactionReview } from "@/components/UserConsole/TransactionReview";
 import { useContractTransaction } from "@/hooks/useContractTransaction";
 import useSynapse from "@/hooks/useSynapse";
-import { daysToEpochs } from "@/utils/lockup-period";
 import { getPermitSignature } from "@/utils/permit";
 import { createDialogCloseGuard } from "./FundsSection/data/dialog-close-guard";
+import {
+  AllowanceFields,
+  LockupPeriodField,
+  ServiceAddressField,
+  TokenAddressField,
+  useServiceApprovalForm,
+} from "./ServiceApproval";
 
 interface DepositAndApproveDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-interface TokenDetails {
-  symbol: string;
-  decimals: number;
-  name: string;
-}
-
 const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open, onOpenChange }) => {
-  const [operatorInput, setOperatorInput] = useState("");
-  const operatorRef = useRef<HTMLDivElement>(null);
-  const [tokenInput, setTokenInput] = useState("");
   const [tokenAmount, setTokenAmount] = useState("");
-  const tokenRef = useRef<HTMLDivElement>(null);
-  const [lockupAllowance, setLockupAllowance] = useState("");
-  const [rateAllowance, setRateAllowance] = useState("");
-  const [maxLockupPeriod, setMaxLockupPeriod] = useState("");
-  const [isUnlimited, setIsUnlimited] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { address: userAddress } = useAccount();
@@ -48,108 +40,29 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
   const { requestReview, reviewDialog } = useTransactionReview();
-
   const { execute, isExecuting } = useContractTransaction({
     contractAddress: constants.contracts.payments.address,
     abi: constants.contracts.payments.abi,
     explorerUrl: constants.chain.blockExplorers?.default.url,
   });
-
-  useEffect(() => {
-    if (!open) {
-      setOperatorInput("");
-      setTokenInput("");
-      setLockupAllowance("");
-      setRateAllowance("");
-      setMaxLockupPeriod("");
-      setIsUnlimited(false);
-    }
-  }, [open]);
-
-  const operatorAddress = (() => {
-    const trimmed = operatorInput.trim();
-    if (isAddress(trimmed)) return trimmed as `0x${string}`;
-  })();
-
-  const shouldFetchToken = tokenInput.trim() && isAddress(tokenInput.trim());
-  const validatedTokenAddress = shouldFetchToken ? (tokenInput.trim() as Hex) : null;
-
-  const {
-    data: tokenDetailsData,
-    isLoading: isLoadingTokenDetails,
-    isError: isTokenDetailsError,
-  } = useReadContracts({
-    contracts: validatedTokenAddress
-      ? [
-          {
-            address: validatedTokenAddress,
-            abi: erc20Abi,
-            functionName: "symbol",
-          },
-          {
-            address: validatedTokenAddress,
-            abi: erc20Abi,
-            functionName: "decimals",
-          },
-          {
-            address: validatedTokenAddress,
-            abi: erc20Abi,
-            functionName: "name",
-          },
-        ]
-      : [],
-    query: {
-      enabled: !!validatedTokenAddress && open,
-    },
-  });
+  const form = useServiceApprovalForm({ open });
+  const { tokenAddress, tokenDetails } = form;
+  const isBusy = isSubmitting || isExecuting;
 
   const { data: balance, isLoading: isLoadingBalance } = useReadContract({
-    address: validatedTokenAddress || undefined,
+    address: tokenAddress ?? undefined,
     abi: erc20Abi,
     functionName: "balanceOf",
     args: userAddress ? [userAddress] : undefined,
-    query: {
-      enabled: !!validatedTokenAddress && !!userAddress && open,
-    },
+    query: { enabled: !!tokenAddress && !!userAddress && open },
   });
 
-  const tokenDetails: TokenDetails | null = (() => {
-    if (!validatedTokenAddress) return null;
-
-    if (tokenDetailsData && !isTokenDetailsError) {
-      return {
-        symbol: (tokenDetailsData[0]?.result as string) || "",
-        decimals: Number(tokenDetailsData[1]?.result || 0),
-        name: (tokenDetailsData[2]?.result as string) || "",
-      };
-    }
-
-    return null;
-  })();
-
   const handleDepositAndApprove = async () => {
-    const maxLockupEpochs = daysToEpochs(maxLockupPeriod);
-    if (!operatorAddress || !validatedTokenAddress || !tokenAmount || maxLockupEpochs === null || !tokenDetails) return;
-    if (!synapse || !walletClient || !publicClient) return;
+    const { lockupAllowanceWei, maxLockupEpochs, rateAllowanceWei, serviceAddress } = form;
+    if (!form.isComplete || !serviceAddress || !tokenAddress || !tokenAmount || maxLockupEpochs === null) return;
+    if (!tokenDetails || !synapse || !walletClient || !publicClient || !userAddress) return;
 
-    if (!userAddress) {
-      console.log("User address not available");
-      return;
-    }
-
-    const tokenDecimals = BigInt(tokenDetails.decimals);
-
-    const lockupInWei = isUnlimited
-      ? maxUint256
-      : lockupAllowance
-        ? BigInt(parseUnits(lockupAllowance, Number(tokenDecimals)).toString())
-        : 0n;
-    const rateInWei = isUnlimited
-      ? maxUint256
-      : rateAllowance
-        ? BigInt(parseUnits(rateAllowance, Number(tokenDecimals)).toString())
-        : 0n;
-    const tokenAmountInWei = BigInt(parseUnits(tokenAmount, Number(tokenDecimals)).toString());
+    const tokenAmountInWei = parseUnits(tokenAmount, tokenDetails.decimals);
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
 
     // Embedded wallets sign without any wallet prompt, so the console shows
@@ -158,23 +71,23 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
       title: `Deposit ${tokenAmount} ${tokenDetails.symbol} and approve service`,
       rows: [
         { label: "Amount", value: `${tokenAmount} ${tokenDetails.symbol}` },
-        { label: "Service", value: operatorAddress },
-        { label: "Rate allowance", value: isUnlimited ? "Unlimited" : rateAllowance || "0" },
-        { label: "Lockup allowance", value: isUnlimited ? "Unlimited" : lockupAllowance || "0" },
-        { label: "Max lockup period", value: `${maxLockupPeriod} days` },
+        { label: "Service", value: serviceAddress },
+        { label: "Rate allowance", value: form.review.rateAllowance },
+        { label: "Lockup allowance", value: form.review.lockupAllowance },
+        { label: "Max lockup period", value: form.review.maxLockupPeriod },
         { label: "Network", value: constants.chain.name },
         { label: "Wallet", value: userAddress },
       ],
       details: JSON.stringify(
         {
           function: "depositWithPermitAndApproveOperator",
-          token: validatedTokenAddress,
+          token: tokenAddress,
           owner: userAddress,
           spender: constants.contracts.payments.address,
           amountWei: tokenAmountInWei.toString(),
-          operator: operatorAddress,
-          rateAllowanceWei: rateInWei.toString(),
-          lockupAllowanceWei: lockupInWei.toString(),
+          operator: serviceAddress,
+          rateAllowanceWei: rateAllowanceWei.toString(),
+          lockupAllowanceWei: lockupAllowanceWei.toString(),
           maxLockupPeriodEpochs: maxLockupEpochs.toString(),
           chainId: constants.chain.id,
         },
@@ -185,11 +98,10 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
     if (!approved) return;
 
     setIsSubmitting(true);
-
     try {
       const permitSignature = await getPermitSignature(
         {
-          tokenAddress: validatedTokenAddress as `0x${string}`,
+          tokenAddress,
           ownerAddress: userAddress,
           spenderAddress: constants.contracts.payments.address,
           amount: tokenAmountInWei,
@@ -203,23 +115,23 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
       await execute({
         functionName: "depositWithPermitAndApproveOperator",
         args: [
-          validatedTokenAddress,
+          tokenAddress,
           userAddress,
           tokenAmountInWei,
           permitSignature.deadline,
           permitSignature.v,
           permitSignature.r,
           permitSignature.s,
-          operatorAddress,
-          rateInWei,
-          lockupInWei,
+          serviceAddress,
+          rateAllowanceWei,
+          lockupAllowanceWei,
           maxLockupEpochs,
         ],
         metadata: {
           type: "depositAndApprove",
           amount: tokenAmount,
           token: tokenDetails.symbol,
-          operator: operatorAddress,
+          operator: serviceAddress,
         },
         onSubmitOnChain: () => onOpenChange(false),
       });
@@ -231,20 +143,11 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
   };
 
   const handleMaxClick = () => {
-    if (balance !== undefined && tokenDetails) {
-      const formattedBalance = formatUnits(balance, tokenDetails.decimals);
-      setTokenAmount(formattedBalance);
-    }
+    if (balance !== undefined && tokenDetails) setTokenAmount(formatUnits(balance, tokenDetails.decimals));
   };
 
-  const isOperatorValid = !!operatorAddress;
-  const isTokenValid = !!validatedTokenAddress && !!tokenDetails && !isLoadingTokenDetails;
-  const canSubmit =
-    isOperatorValid && isTokenValid && daysToEpochs(maxLockupPeriod) !== null && !isSubmitting && !isExecuting;
-
   const handleOpenChange = createDialogCloseGuard({
-    blockReason: () =>
-      isSubmitting || isExecuting ? "Wait for the transaction to finish before closing this dialog." : null,
+    blockReason: () => (isBusy ? "Wait for the transaction to finish before closing this dialog." : null),
     onClose: () => onOpenChange(false),
     onOpen: () => onOpenChange(true),
   });
@@ -253,7 +156,7 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
     <>
       {reviewDialog}
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className='sm:max-w-[600px] max-h-[90vh] overflow-y-auto'>
+        <DialogContent className='max-h-[90vh] overflow-y-auto sm:max-w-[600px]'>
           <DialogHeader>
             <DialogTitle>Deposit and approve a service</DialogTitle>
             <DialogDescription>
@@ -262,78 +165,19 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
           </DialogHeader>
 
           <div className='grid gap-6 py-4'>
-            {/* Token Input - Unified with Auto-fetch */}
-            <div className='grid gap-3'>
-              <Label htmlFor='token'>Token Address</Label>
-              <div className='relative' ref={tokenRef}>
-                <div className='relative'>
-                  <Input
-                    id='token'
-                    placeholder='Enter token address 0x...'
-                    value={tokenInput}
-                    onChange={setTokenInput}
-                    disabled={isSubmitting}
-                    className='pr-10'
-                  />
-                </div>
+            <TokenAddressField disabled={isBusy} form={form} />
 
-                {/* Token Validation & Details */}
-                {tokenInput && (
-                  <div className='mt-2 space-y-2'>
-                    {!validatedTokenAddress ? (
-                      <div className='flex items-center gap-2 text-sm text-destructive'>
-                        <AlertCircle className='h-4 w-4' />
-                        <span>Invalid token address</span>
-                      </div>
-                    ) : isLoadingTokenDetails ? (
-                      <div className='flex items-center gap-2 text-sm text-muted-foreground'>
-                        <Loader2 className='h-4 w-4 animate-spin' />
-                        <span>Loading token details...</span>
-                      </div>
-                    ) : isTokenDetailsError ? (
-                      <div className='flex items-center gap-2 text-sm text-destructive'>
-                        <AlertCircle className='h-4 w-4' />
-                        <span>Failed to load token details</span>
-                      </div>
-                    ) : tokenDetails ? (
-                      <div className='rounded-lg bg-primary/10 p-3 space-y-2'>
-                        <div className='flex items-center gap-2 text-sm text-primary'>
-                          <CheckCircle2 className='h-4 w-4' />
-                          <span className='font-medium'>Token loaded successfully</span>
-                        </div>
-                        <div className='grid grid-cols-2 gap-2 text-xs'>
-                          <div>
-                            <span className='text-muted-foreground'>Symbol:</span>{" "}
-                            <span className='font-medium'>{tokenDetails.symbol}</span>
-                          </div>
-                          <div>
-                            <span className='text-muted-foreground'>Decimals:</span>{" "}
-                            <span className='font-medium'>{tokenDetails.decimals}</span>
-                          </div>
-                          <div className='col-span-2'>
-                            <span className='text-muted-foreground'>Name:</span>{" "}
-                            <span className='font-medium'>{tokenDetails.name}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Token Amount */}
             {tokenDetails && (
               <div className='grid gap-2'>
                 <div className='flex items-center justify-between'>
-                  <Label htmlFor='amount'>Amount</Label>
+                  <Label htmlFor='deposit-and-approve-amount'>Amount</Label>
                   {(balance !== undefined || isLoadingBalance) && (
-                    <div className='flex items-center gap-2 text-xs text-muted-foreground'>
+                    <span className='flex items-center gap-2 text-xs text-muted-foreground'>
                       <Wallet className='h-3 w-3' />
                       <span>
                         Balance:{" "}
                         {isLoadingBalance || balance === undefined ? (
-                          <Loader2 className='h-3 w-3 animate-spin inline' />
+                          <Loader2 className='inline h-3 w-3 animate-spin' />
                         ) : (
                           <span className='font-medium text-foreground'>
                             {Number(formatUnits(balance, tokenDetails.decimals)).toLocaleString(undefined, {
@@ -343,146 +187,53 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
                           </span>
                         )}
                       </span>
-                    </div>
+                    </span>
                   )}
                 </div>
                 <div className='relative'>
                   <Input
-                    id='amount'
-                    type='text'
+                    className='pr-16 text-lg'
+                    disabled={isBusy}
+                    id='deposit-and-approve-amount'
                     inputMode='decimal'
-                    placeholder='0.0'
-                    value={tokenAmount}
                     onChange={setTokenAmount}
-                    disabled={isSubmitting}
-                    className='text-lg pr-16'
+                    placeholder='0.0'
+                    type='text'
+                    value={tokenAmount}
                   />
                   <Button
+                    className='absolute right-1 top-1/2 h-7 -translate-y-1/2 px-2 text-xs font-semibold'
+                    disabled={isBusy || balance === undefined || isLoadingBalance}
+                    onClick={handleMaxClick}
                     type='button'
                     variant='ghost'
-                    className='absolute right-1 top-1/2 -translate-y-1/2 h-7 px-2 text-xs font-semibold'
-                    onClick={handleMaxClick}
-                    disabled={isSubmitting || balance === undefined || isLoadingBalance}
                   >
                     MAX
                   </Button>
                 </div>
-                <p className='text-xs text-muted-foreground'>
-                  Enter the amount of {tokenDetails.symbol} you want to deposit
-                </p>
+                <p className='text-xs text-muted-foreground'>The amount of {tokenDetails.symbol} to deposit.</p>
               </div>
             )}
 
-            {/* Operator Input - Unified */}
-            <div className='grid gap-3'>
-              <Label htmlFor='operator'>Service address</Label>
-              <div className='relative' ref={operatorRef}>
-                <div className='relative'>
-                  <Input
-                    id='operator'
-                    placeholder='Enter Operator address 0x...'
-                    value={operatorInput}
-                    onChange={setOperatorInput}
-                    disabled={isSubmitting}
-                    className='pr-10'
-                  />
-                </div>
-
-                {/* Operator Validation */}
-                {operatorInput && (
-                  <div className='mt-2'>
-                    {isOperatorValid ? (
-                      <div className='flex items-center gap-2 text-sm text-primary'>
-                        <CheckCircle2 className='h-4 w-4' />
-                        <span>Valid operator address</span>
-                      </div>
-                    ) : (
-                      <div className='flex items-center gap-2 text-sm text-destructive'>
-                        <AlertCircle className='h-4 w-4' />
-                        <span>Invalid address format</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Allowances */}
-            <div className='grid gap-3'>
-              <div className='flex items-center justify-between'>
-                <Label>Allowances</Label>
-                <label className='flex items-center gap-2 text-sm cursor-pointer'>
-                  <input
-                    type='checkbox'
-                    checked={isUnlimited}
-                    onChange={(e) => setIsUnlimited(e.target.checked)}
-                    className='rounded'
-                  />
-                  Unlimited
-                </label>
-              </div>
-              <div className='grid grid-cols-2 gap-3'>
-                <div className='grid gap-2'>
-                  <Label htmlFor='lockupAllowance' className='text-xs text-muted-foreground'>
-                    Lockup Allowance
-                  </Label>
-                  <Input
-                    id='lockupAllowance'
-                    type='text'
-                    inputMode='decimal'
-                    placeholder='0.0'
-                    value={lockupAllowance}
-                    onChange={setLockupAllowance}
-                    disabled={isUnlimited || isSubmitting}
-                  />
-                </div>
-                <div className='grid gap-2'>
-                  <Label htmlFor='rateAllowance' className='text-xs text-muted-foreground'>
-                    Rate Allowance
-                  </Label>
-                  <Input
-                    id='rateAllowance'
-                    type='text'
-                    inputMode='decimal'
-                    placeholder='0.0'
-                    value={rateAllowance}
-                    onChange={setRateAllowance}
-                    disabled={isUnlimited || isSubmitting}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Max Lockup Period */}
-            <div className='grid gap-2'>
-              <Label htmlFor='maxLockupPeriod'>Max lockup period (days)</Label>
-              <Input
-                id='maxLockupPeriod'
-                inputMode='decimal'
-                type='text'
-                placeholder='e.g., 30'
-                value={maxLockupPeriod}
-                onChange={setMaxLockupPeriod}
-                disabled={isSubmitting}
-              />
-              <p className='text-xs text-muted-foreground'>The longest the service may keep your funds locked.</p>
-            </div>
+            <ServiceAddressField disabled={isBusy} form={form} />
+            <AllowanceFields disabled={isBusy} form={form} />
+            <LockupPeriodField disabled={isBusy} form={form} />
           </div>
 
           <DialogFooter>
-            <Button
-              variant='ghost'
-              onClick={() => onOpenChange(false)}
-              disabled={isSubmitting || isExecuting}
-              size='compact'
-            >
+            <Button variant='ghost' onClick={() => onOpenChange(false)} disabled={isBusy} size='compact'>
               Cancel
             </Button>
-            <Button variant='primary' onClick={handleDepositAndApprove} disabled={!canSubmit} size='compact'>
-              {isSubmitting || isExecuting ? (
+            <Button
+              variant='primary'
+              onClick={handleDepositAndApprove}
+              disabled={!form.isComplete || !tokenAmount.trim() || isBusy}
+              size='compact'
+            >
+              {isBusy ? (
                 <span className='flex items-center gap-2'>
-                  <Loader2 className='h-4 w-4 animate-spin mr-2' />
-                  Processing...
+                  <Loader2 className='h-4 w-4 animate-spin' />
+                  Processing…
                 </span>
               ) : (
                 "Deposit and approve"
