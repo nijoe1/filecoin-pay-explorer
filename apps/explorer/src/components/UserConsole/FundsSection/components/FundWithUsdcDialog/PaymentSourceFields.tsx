@@ -94,7 +94,8 @@ export function PaymentSourceFields({
     <>
       <div className='grid gap-4 sm:grid-cols-2'>
         <div className='grid gap-2'>
-          <div className='flex items-center justify-between gap-2'>
+          {/* Both label rows take the height of the button in this one, so the labels line up. */}
+          <div className='flex min-h-10 items-center justify-between gap-2'>
             <Label htmlFor='fund-with-usdc-wallet'>Pay from</Label>
             <Button
               aria-label='Connect another wallet'
@@ -126,7 +127,7 @@ export function PaymentSourceFields({
         </div>
 
         <div className='grid gap-2'>
-          <div className='flex h-6 items-center justify-between gap-2'>
+          <div className='flex min-h-10 items-center justify-between gap-2'>
             <Label htmlFor='fund-with-usdc-source'>Pay with</Label>
             {isScanning && funded.length > 0 ? (
               <span className='text-xs text-muted-foreground'>Checking balances…</span>
