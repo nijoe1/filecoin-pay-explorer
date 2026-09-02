@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { act, create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  describeStage,
   describeWallet,
   FundWithUsdcDialog,
   isFundingExit,
@@ -128,6 +129,32 @@ describe("wallet helpers", () => {
     expect(parseUsdcAmount("0", 6)).toBeNull();
     expect(parseUsdcAmount("abc", 6)).toBeNull();
     expect(parseUsdcAmount("", 6)).toBeNull();
+  });
+
+  it("describes every deposit stage and numbers the approval and swap signatures", () => {
+    const stages = ["preparing", "approving", "swap-requested", "swap-broadcast", "bridging", "verifying"] as const;
+    const describeAll = (options: { hasApproved: boolean; isEmbedded: boolean }) =>
+      Object.fromEntries(stages.map((stage) => [stage, describeStage(stage, options)]));
+
+    expect(describeAll({ hasApproved: true, isEmbedded: false })).toEqual({
+      preparing: "Preparing the route…",
+      approving: "Step 1 of 2: approve USDC in your wallet",
+      "swap-requested": "Step 2 of 2: confirm the swap in your wallet",
+      "swap-broadcast": "Waiting for the source network to confirm…",
+      bridging: "Bridging to Filecoin and depositing. This takes about two minutes.",
+      verifying: "Confirming your Filecoin Pay balance…",
+    });
+    expect(describeAll({ hasApproved: false, isEmbedded: true })).toEqual({
+      preparing: "Preparing the route…",
+      approving: "Step 1 of 2: approving USDC with your Privy wallet…",
+      "swap-requested": "Signing the swap with your Privy wallet…",
+      "swap-broadcast": "Waiting for the source network to confirm…",
+      bridging: "Bridging to Filecoin and depositing. This takes about two minutes.",
+      verifying: "Confirming your Filecoin Pay balance…",
+    });
+    expect(describeStage("swap-requested", { hasApproved: false, isEmbedded: false })).toBe(
+      "Confirm the swap in your wallet",
+    );
   });
 
   it("treats a closed Privy funding modal as an exit rather than an error", () => {

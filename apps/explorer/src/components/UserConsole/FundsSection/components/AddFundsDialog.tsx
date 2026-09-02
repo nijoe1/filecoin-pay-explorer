@@ -80,8 +80,8 @@ export function AddFundsDialog({
                   <ArrowRight className='h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5' />
                 </span>
                 <span className='mt-1 block text-sm text-muted-foreground'>
-                  Pay USDC from your Privy wallet or another wallet. It is swapped to USDFC and deposited into your
-                  account in one transaction.
+                  Pay USDC from your Privy wallet or another wallet. It arrives as USDFC in your account, with nothing
+                  to sign on Filecoin.
                 </span>
               </span>
             </div>

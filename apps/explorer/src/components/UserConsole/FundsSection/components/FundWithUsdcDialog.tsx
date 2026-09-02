@@ -80,14 +80,36 @@ const DEFAULT_INTEGRATOR_ID = "filecoin-testing-94a4a25a-d40b-41cb-b148-e9609886
 
 type UiStage = SquidDepositStage | "preparing";
 
-const STAGE_LABELS: Record<UiStage, string> = {
-  preparing: "Preparing the route…",
-  approving: "Approving USDC…",
-  "swap-requested": "Waiting for the transaction to be signed…",
-  "swap-broadcast": "Waiting for the source network to confirm…",
-  bridging: "Bridging to Filecoin and depositing. This takes about two minutes.",
-  verifying: "Confirming your Filecoin Pay balance…",
-};
+/**
+ * What the user should do or wait for at each stage. A first purchase signs a
+ * USDC approval before the swap, so those two signatures are numbered.
+ */
+export function describeStage(
+  stage: UiStage,
+  { hasApproved, isEmbedded }: { hasApproved: boolean; isEmbedded: boolean },
+): string {
+  switch (stage) {
+    case "preparing":
+      return "Preparing the route…";
+    case "approving":
+      return isEmbedded
+        ? "Step 1 of 2: approving USDC with your Privy wallet…"
+        : "Step 1 of 2: approve USDC in your wallet";
+    case "swap-requested":
+      if (isEmbedded) {
+        return hasApproved
+          ? "Step 2 of 2: signing the swap with your Privy wallet…"
+          : "Signing the swap with your Privy wallet…";
+      }
+      return hasApproved ? "Step 2 of 2: confirm the swap in your wallet" : "Confirm the swap in your wallet";
+    case "swap-broadcast":
+      return "Waiting for the source network to confirm…";
+    case "bridging":
+      return "Bridging to Filecoin and depositing. This takes about two minutes.";
+    case "verifying":
+      return "Confirming your Filecoin Pay balance…";
+  }
+}
 
 export function describeWallet(wallet: Pick<ConnectedWallet, "address" | "walletClientType">): string {
   const name = isPrivyEmbeddedWallet(wallet)
@@ -152,6 +174,8 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   const [amount, setAmount] = useState("");
   const [debouncedAmount] = useDebounce(amount, QUOTE_DEBOUNCE_MS);
   const [stage, setStage] = useState<UiStage | null>(null);
+  // Whether this run signed a USDC approval, so the swap signature reads as step 2 of 2.
+  const [hasApproved, setHasApproved] = useState(false);
   const [transactionHash, setTransactionHash] = useState<Hash | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingSquidDeposit | null>(null);
@@ -279,6 +303,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   );
 
   const setStageWithHash = (nextStage: SquidDepositStage, hash?: Hash) => {
+    if (nextStage === "approving") setHasApproved(true);
     setStage(nextStage);
     if (hash) setTransactionHash(hash);
   };
@@ -417,6 +442,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
       if (!confirmed) return;
     }
 
+    setHasApproved(false);
     setStage("preparing");
     try {
       await payingWallet.switchChain(sourceChainId);
@@ -555,7 +581,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
             >
               Squid
             </a>{" "}
-            and deposited into your account in one transaction.
+            and deposited into your account. Nothing to sign on Filecoin, no FIL needed.
             {recipient ? (
               <span className='mt-1 block font-mono text-xs'>Account {formatAddress(recipient)}</span>
             ) : null}
@@ -570,7 +596,9 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                 Deposit in progress
               </p>
               <p className='text-muted-foreground'>
-                {activeStage ? STAGE_LABELS[activeStage] : "Waiting for the route to settle…"}
+                {activeStage
+                  ? describeStage(activeStage, { hasApproved, isEmbedded })
+                  : "Waiting for the route to settle…"}
               </p>
               <TransactionLink explorerUrl={explorerUrl} hash={pending.transactionHash} />
               {error && (
@@ -819,7 +847,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                 <div className='grid gap-1 rounded-md border p-3' role='status'>
                   <p className='inline-flex items-center gap-2'>
                     <Loader2 className='h-4 w-4 animate-spin' />
-                    {stage === "swap-requested" && isEmbedded ? "Signing with your Privy wallet…" : STAGE_LABELS[stage]}
+                    {describeStage(stage, { hasApproved, isEmbedded })}
                   </p>
                   {transactionHash && <TransactionLink explorerUrl={explorerUrl} hash={transactionHash} />}
                 </div>

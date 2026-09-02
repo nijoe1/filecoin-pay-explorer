@@ -21,7 +21,7 @@ This app requires the following environment variables:
 
 Squid route quotes use the public `filecoin-testing-94a4a25a-d40b-41cb-b148-e96098862` integrator ID by default.
 
-The console signs in through [Privy](https://www.privy.io/): email or Google login creates an embedded wallet, and external wallets connect as before. "Fund with USDC" in the console pays USDC from any connected wallet, swaps it to USDFC through Squid, and deposits it into the Filecoin Pay account in one transaction.
+The console signs in through [Privy](https://www.privy.io/): email or Google login creates an embedded wallet, and external wallets connect as before. "Fund with USDC" in the console pays USDC from any connected wallet, swaps it to USDFC through Squid, and deposits it into the Filecoin Pay account. Nothing is signed on Filecoin and no FIL is needed; on the source network a first purchase signs a USDC approval and then the swap.
 
 In the [Privy dashboard](https://dashboard.privy.io) the app needs:
 
