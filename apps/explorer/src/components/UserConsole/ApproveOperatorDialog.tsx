@@ -19,6 +19,7 @@ import { useTransactionReview } from "@/components/UserConsole/TransactionReview
 import { useContractTransaction } from "@/hooks/useContractTransaction";
 import useSynapse from "@/hooks/useSynapse";
 import { formatAddress } from "@/utils/formatter";
+import { daysToEpochs } from "@/utils/lockup-period";
 
 interface ApproveOperatorDialogProps {
   operators?: Operator[];
@@ -185,15 +186,8 @@ export const ApproveOperatorDialog: React.FC<ApproveOperatorDialogProps> = ({
   })();
 
   const handleApprove = async () => {
-    if (!operatorAddress || !tokenAddress || !maxLockupPeriod || !tokenDetails) {
-      console.log("Missing required fields");
-      return;
-    }
-
-    if (!synapse) {
-      console.log("Synapse not initialized");
-      return;
-    }
+    const maxLockupEpochs = daysToEpochs(maxLockupPeriod);
+    if (!operatorAddress || !tokenAddress || maxLockupEpochs === null || !tokenDetails || !synapse) return;
 
     setIsSubmitting(true);
 
@@ -213,13 +207,13 @@ export const ApproveOperatorDialog: React.FC<ApproveOperatorDialogProps> = ({
     // Embedded wallets sign without any wallet prompt, so the console shows
     // its own review step first (once per action; user can opt out).
     const approved = await requestReview({
-      title: `Approve operator ${operatorAddress.slice(0, 6)}…${operatorAddress.slice(-4)}`,
+      title: `Approve service ${operatorAddress.slice(0, 6)}…${operatorAddress.slice(-4)}`,
       rows: [
-        { label: "Operator", value: operatorAddress },
+        { label: "Service", value: operatorAddress },
         { label: "Token", value: `${tokenDetails.symbol} ${tokenAddress}` },
         { label: "Rate allowance", value: isUnlimited ? "Unlimited" : rateAllowance || "0" },
         { label: "Lockup allowance", value: isUnlimited ? "Unlimited" : lockupAllowance || "0" },
-        { label: "Max lockup period", value: `${maxLockupPeriod} epochs` },
+        { label: "Max lockup period", value: `${maxLockupPeriod} days` },
       ],
       details: JSON.stringify(
         {
@@ -229,7 +223,7 @@ export const ApproveOperatorDialog: React.FC<ApproveOperatorDialogProps> = ({
           approved: true,
           rateAllowanceWei: rateInWei.toString(),
           lockupAllowanceWei: lockupInWei.toString(),
-          maxLockupPeriod,
+          maxLockupPeriodEpochs: maxLockupEpochs.toString(),
         },
         null,
         2,
@@ -243,7 +237,7 @@ export const ApproveOperatorDialog: React.FC<ApproveOperatorDialogProps> = ({
     try {
       await execute({
         functionName: "setOperatorApproval",
-        args: [tokenAddress, operatorAddress, true, rateInWei, lockupInWei, BigInt(maxLockupPeriod)],
+        args: [tokenAddress, operatorAddress, true, rateInWei, lockupInWei, maxLockupEpochs],
         metadata: {
           type: "approveOperator",
           operator: operatorAddress,
@@ -261,7 +255,8 @@ export const ApproveOperatorDialog: React.FC<ApproveOperatorDialogProps> = ({
 
   const isOperatorValid = !!operatorAddress;
   const isTokenValid = !!tokenAddress && !!tokenDetails && !isLoadingTokenDetails;
-  const canSubmit = isOperatorValid && isTokenValid && maxLockupPeriod && !isSubmitting && !isExecuting;
+  const canSubmit =
+    isOperatorValid && isTokenValid && daysToEpochs(maxLockupPeriod) !== null && !isSubmitting && !isExecuting;
 
   return (
     <>
@@ -269,16 +264,14 @@ export const ApproveOperatorDialog: React.FC<ApproveOperatorDialogProps> = ({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className='sm:max-w-[600px] max-h-[90vh] overflow-y-auto'>
           <DialogHeader>
-            <DialogTitle>Approve Operator</DialogTitle>
-            <DialogDescription>
-              Grant an operator permission to manage payments on your behalf with specified limits.
-            </DialogDescription>
+            <DialogTitle>Approve a service</DialogTitle>
+            <DialogDescription>Let a service charge your account, within the limits you set.</DialogDescription>
           </DialogHeader>
 
           <div className='grid gap-6 py-4'>
             {/* Operator Input - Unified */}
             <div className='grid gap-3'>
-              <Label htmlFor='operator'>Operator Address</Label>
+              <Label htmlFor='operator'>Service address</Label>
               <div className='relative' ref={operatorRef}>
                 <div className='relative'>
                   <Input
@@ -498,16 +491,17 @@ export const ApproveOperatorDialog: React.FC<ApproveOperatorDialogProps> = ({
 
             {/* Max Lockup Period */}
             <div className='grid gap-2'>
-              <Label htmlFor='maxLockupPeriod'>Max Lockup Period (epochs)</Label>
+              <Label htmlFor='maxLockupPeriod'>Max lockup period (days)</Label>
               <Input
                 id='maxLockupPeriod'
-                type='number'
-                placeholder='e.g., 2880 (1 day)'
+                inputMode='decimal'
+                type='text'
+                placeholder='e.g., 30'
                 value={maxLockupPeriod}
                 onChange={setMaxLockupPeriod}
                 disabled={isSubmitting}
               />
-              <p className='text-xs text-muted-foreground'>Maximum duration the operator can lock your funds</p>
+              <p className='text-xs text-muted-foreground'>The longest the service may keep your funds locked.</p>
             </div>
           </div>
 
@@ -527,7 +521,7 @@ export const ApproveOperatorDialog: React.FC<ApproveOperatorDialogProps> = ({
                   Processing...
                 </span>
               ) : (
-                "Approve Operator"
+                "Approve service"
               )}
             </Button>
           </DialogFooter>

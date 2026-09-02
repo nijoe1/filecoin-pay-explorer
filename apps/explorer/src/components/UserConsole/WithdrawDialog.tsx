@@ -53,11 +53,7 @@ export const WithdrawDialog: React.FC<WithdrawDialogProps> = ({ userToken, open,
   }, [open]);
 
   // Fetch balance using useReadContract
-  const {
-    data: accountInfo,
-    isLoading: isLoadingAccountInfo,
-    isRefetching: isRefetchingAccountInfo,
-  } = useReadContract({
+  const { data: accountInfo, isLoading: isLoadingAccountInfo } = useReadContract({
     address: constants.contracts.payments.address,
     abi: constants.contracts.payments.abi,
     functionName: "getAccountInfoIfSettled",
@@ -172,7 +168,7 @@ export const WithdrawDialog: React.FC<WithdrawDialogProps> = ({ userToken, open,
   const lockupRate = accountInfo ? (accountInfo as AccountInfo)[3] : 0n;
 
   const canWithdraw = accountInfo && parseUnits(amount, currentToken.decimals) <= (accountInfo as AccountInfo)[2];
-  const canExecute = !isExecuting && canWithdraw && !isLoadingAccountInfo && !isRefetchingAccountInfo;
+  const canExecute = !isExecuting && canWithdraw && !isLoadingAccountInfo;
 
   return (
     <>
@@ -219,7 +215,7 @@ export const WithdrawDialog: React.FC<WithdrawDialogProps> = ({ userToken, open,
                       <Wallet className='h-3 w-3' />
                       <span>
                         Balance:{" "}
-                        {isLoadingAccountInfo || !accountInfo || isRefetchingAccountInfo ? (
+                        {isLoadingAccountInfo || !accountInfo ? (
                           <Loader2 className='h-3 w-3 animate-spin inline' />
                         ) : (
                           <span className='font-medium text-foreground'>
@@ -253,7 +249,7 @@ export const WithdrawDialog: React.FC<WithdrawDialogProps> = ({ userToken, open,
                     variant='ghost'
                     className='absolute right-1 top-1/2 -translate-y-1/2 h-7 px-2 text-xs font-semibold'
                     onClick={handleMaxClick}
-                    disabled={isExecuting || !accountInfo || isLoadingAccountInfo || isRefetchingAccountInfo}
+                    disabled={isExecuting || !accountInfo || isLoadingAccountInfo}
                   >
                     MAX
                   </Button>

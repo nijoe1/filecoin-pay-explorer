@@ -16,6 +16,7 @@ import { useAccount, usePublicClient, useReadContract, useReadContracts, useWall
 import { useTransactionReview } from "@/components/UserConsole/TransactionReview";
 import { useContractTransaction } from "@/hooks/useContractTransaction";
 import useSynapse from "@/hooks/useSynapse";
+import { daysToEpochs } from "@/utils/lockup-period";
 import { getPermitSignature } from "@/utils/permit";
 
 interface DepositAndApproveDialogProps {
@@ -126,20 +127,9 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
   })();
 
   const handleDepositAndApprove = async () => {
-    if (!operatorAddress || !validatedTokenAddress || !tokenAmount || !maxLockupPeriod || !tokenDetails) {
-      console.log("Missing required fields");
-      return;
-    }
-
-    if (!synapse) {
-      console.log("Synapse not initialized");
-      return;
-    }
-
-    if (!walletClient || !publicClient) {
-      console.log("Wallet client or public client not available");
-      return;
-    }
+    const maxLockupEpochs = daysToEpochs(maxLockupPeriod);
+    if (!operatorAddress || !validatedTokenAddress || !tokenAmount || maxLockupEpochs === null || !tokenDetails) return;
+    if (!synapse || !walletClient || !publicClient) return;
 
     if (!userAddress) {
       console.log("User address not available");
@@ -164,12 +154,13 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
     // Embedded wallets sign without any wallet prompt, so the console shows
     // its own review step first (once per action; user can opt out).
     const approved = await requestReview({
-      title: `Deposit ${tokenAmount} ${tokenDetails.symbol} and approve operator`,
+      title: `Deposit ${tokenAmount} ${tokenDetails.symbol} and approve service`,
       rows: [
         { label: "Amount", value: `${tokenAmount} ${tokenDetails.symbol}` },
-        { label: "Operator", value: operatorAddress },
+        { label: "Service", value: operatorAddress },
         { label: "Rate allowance", value: isUnlimited ? "Unlimited" : rateAllowance || "0" },
         { label: "Lockup allowance", value: isUnlimited ? "Unlimited" : lockupAllowance || "0" },
+        { label: "Max lockup period", value: `${maxLockupPeriod} days` },
         { label: "Network", value: constants.chain.name },
         { label: "Wallet", value: userAddress },
       ],
@@ -183,7 +174,7 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
           operator: operatorAddress,
           rateAllowanceWei: rateInWei.toString(),
           lockupAllowanceWei: lockupInWei.toString(),
-          maxLockupPeriod,
+          maxLockupPeriodEpochs: maxLockupEpochs.toString(),
           chainId: constants.chain.id,
         },
         null,
@@ -221,7 +212,7 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
           operatorAddress,
           rateInWei,
           lockupInWei,
-          BigInt(maxLockupPeriod),
+          maxLockupEpochs,
         ],
         metadata: {
           type: "depositAndApprove",
@@ -247,7 +238,8 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
 
   const isOperatorValid = !!operatorAddress;
   const isTokenValid = !!validatedTokenAddress && !!tokenDetails && !isLoadingTokenDetails;
-  const canSubmit = isOperatorValid && isTokenValid && maxLockupPeriod && !isSubmitting && !isExecuting;
+  const canSubmit =
+    isOperatorValid && isTokenValid && daysToEpochs(maxLockupPeriod) !== null && !isSubmitting && !isExecuting;
 
   return (
     <>
@@ -255,9 +247,9 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className='sm:max-w-[600px] max-h-[90vh] overflow-y-auto'>
           <DialogHeader>
-            <DialogTitle>Approve Operator</DialogTitle>
+            <DialogTitle>Deposit and approve a service</DialogTitle>
             <DialogDescription>
-              Grant an operator permission to manage payments on your behalf with specified limits.
+              Deposit tokens and let a service charge your account, within the limits you set, in one transaction.
             </DialogDescription>
           </DialogHeader>
 
@@ -376,7 +368,7 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
 
             {/* Operator Input - Unified */}
             <div className='grid gap-3'>
-              <Label htmlFor='operator'>Operator Address</Label>
+              <Label htmlFor='operator'>Service address</Label>
               <div className='relative' ref={operatorRef}>
                 <div className='relative'>
                   <Input
@@ -454,16 +446,17 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
 
             {/* Max Lockup Period */}
             <div className='grid gap-2'>
-              <Label htmlFor='maxLockupPeriod'>Max Lockup Period (epochs)</Label>
+              <Label htmlFor='maxLockupPeriod'>Max lockup period (days)</Label>
               <Input
                 id='maxLockupPeriod'
-                type='number'
-                placeholder='e.g., 2880 (1 day)'
+                inputMode='decimal'
+                type='text'
+                placeholder='e.g., 30'
                 value={maxLockupPeriod}
                 onChange={setMaxLockupPeriod}
                 disabled={isSubmitting}
               />
-              <p className='text-xs text-muted-foreground'>Maximum duration the operator can lock your funds</p>
+              <p className='text-xs text-muted-foreground'>The longest the service may keep your funds locked.</p>
             </div>
           </div>
 
@@ -483,7 +476,7 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
                   Processing...
                 </span>
               ) : (
-                "Deposit & Approve Operator"
+                "Deposit and approve"
               )}
             </Button>
           </DialogFooter>
