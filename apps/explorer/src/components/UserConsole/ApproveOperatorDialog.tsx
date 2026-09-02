@@ -15,6 +15,7 @@ import { AlertCircle, CheckCircle2, ChevronDown, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { erc20Abi, isAddress, maxUint256, parseUnits } from "viem";
 import { useReadContracts } from "wagmi";
+import { useTransactionReview } from "@/components/UserConsole/TransactionReview";
 import { useContractTransaction } from "@/hooks/useContractTransaction";
 import useSynapse from "@/hooks/useSynapse";
 import { formatAddress } from "@/utils/formatter";
@@ -57,6 +58,7 @@ export const ApproveOperatorDialog: React.FC<ApproveOperatorDialogProps> = ({
 
   const { synapse, constants } = useSynapse();
 
+  const { requestReview, reviewDialog } = useTransactionReview();
   const { execute, isExecuting } = useContractTransaction({
     contractAddress: constants.contracts.payments.address,
     abi: constants.contracts.payments.abi,
@@ -208,6 +210,36 @@ export const ApproveOperatorDialog: React.FC<ApproveOperatorDialogProps> = ({
         ? BigInt(parseUnits(rateAllowance, Number(tokenDecimals)).toString())
         : 0n;
 
+    // Embedded wallets sign without any wallet prompt, so the console shows
+    // its own review step first (once per action; user can opt out).
+    const approved = await requestReview({
+      title: `Approve operator ${operatorAddress.slice(0, 6)}…${operatorAddress.slice(-4)}`,
+      rows: [
+        { label: "Operator", value: operatorAddress },
+        { label: "Token", value: `${tokenDetails.symbol} ${tokenAddress}` },
+        { label: "Rate allowance", value: isUnlimited ? "Unlimited" : rateAllowance || "0" },
+        { label: "Lockup allowance", value: isUnlimited ? "Unlimited" : lockupAllowance || "0" },
+        { label: "Max lockup period", value: `${maxLockupPeriod} epochs` },
+      ],
+      details: JSON.stringify(
+        {
+          function: "setOperatorApproval",
+          token: tokenAddress,
+          operator: operatorAddress,
+          approved: true,
+          rateAllowanceWei: rateInWei.toString(),
+          lockupAllowanceWei: lockupInWei.toString(),
+          maxLockupPeriod,
+        },
+        null,
+        2,
+      ),
+    });
+    if (!approved) {
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       await execute({
         functionName: "setOperatorApproval",
@@ -232,272 +264,275 @@ export const ApproveOperatorDialog: React.FC<ApproveOperatorDialogProps> = ({
   const canSubmit = isOperatorValid && isTokenValid && maxLockupPeriod && !isSubmitting && !isExecuting;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-[600px] max-h-[90vh] overflow-y-auto'>
-        <DialogHeader>
-          <DialogTitle>Approve Operator</DialogTitle>
-          <DialogDescription>
-            Grant an operator permission to manage payments on your behalf with specified limits.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      {reviewDialog}
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className='sm:max-w-[600px] max-h-[90vh] overflow-y-auto'>
+          <DialogHeader>
+            <DialogTitle>Approve Operator</DialogTitle>
+            <DialogDescription>
+              Grant an operator permission to manage payments on your behalf with specified limits.
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className='grid gap-6 py-4'>
-          {/* Operator Input - Unified */}
-          <div className='grid gap-3'>
-            <Label htmlFor='operator'>Operator Address</Label>
-            <div className='relative' ref={operatorRef}>
-              <div className='relative'>
-                <Input
-                  id='operator'
-                  placeholder='Enter address or select from list...'
-                  value={operatorInput}
-                  onChange={(value) => {
-                    setOperatorInput(value);
-                    setShowOperatorDropdown(true);
-                  }}
-                  onFocus={() => setShowOperatorDropdown(true)}
-                  disabled={isSubmitting}
-                  className='pr-10'
-                />
-                {operators.length > 0 && (
-                  <Button
-                    type='button'
-                    variant='ghost'
-                    className='absolute right-0 top-0 h-full px-3'
-                    onClick={() => setShowOperatorDropdown(!showOperatorDropdown)}
+          <div className='grid gap-6 py-4'>
+            {/* Operator Input - Unified */}
+            <div className='grid gap-3'>
+              <Label htmlFor='operator'>Operator Address</Label>
+              <div className='relative' ref={operatorRef}>
+                <div className='relative'>
+                  <Input
+                    id='operator'
+                    placeholder='Enter address or select from list...'
+                    value={operatorInput}
+                    onChange={(value) => {
+                      setOperatorInput(value);
+                      setShowOperatorDropdown(true);
+                    }}
+                    onFocus={() => setShowOperatorDropdown(true)}
                     disabled={isSubmitting}
-                    size='compact'
-                  >
-                    <ChevronDown className='h-4 w-4 text-muted-foreground' />
-                  </Button>
-                )}
-              </div>
-
-              {/* Operator Dropdown */}
-              {showOperatorDropdown && filteredOperators.length > 0 && (
-                <div className='absolute z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md'>
-                  <div className='max-h-[200px] overflow-auto'>
-                    {filteredOperators.map((op) => (
-                      <button
-                        key={op.id}
-                        type='button'
-                        className='w-full text-left px-3 py-2 text-sm rounded hover:bg-accent transition-colors'
-                        onClick={() => {
-                          setOperatorInput(op.id);
-                          setShowOperatorDropdown(false);
-                        }}
-                      >
-                        <div className='font-medium font-mono text-xs'>{formatAddress(op.address)}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Operator Validation */}
-              {operatorInput && (
-                <div className='mt-2'>
-                  {isOperatorValid ? (
-                    <div className='flex items-center gap-2 text-sm text-green-600 dark:text-green-400'>
-                      <CheckCircle2 className='h-4 w-4' />
-                      <span>Valid operator address</span>
-                    </div>
-                  ) : (
-                    <div className='flex items-center gap-2 text-sm text-destructive'>
-                      <AlertCircle className='h-4 w-4' />
-                      <span>Invalid address format</span>
-                    </div>
+                    className='pr-10'
+                  />
+                  {operators.length > 0 && (
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      className='absolute right-0 top-0 h-full px-3'
+                      onClick={() => setShowOperatorDropdown(!showOperatorDropdown)}
+                      disabled={isSubmitting}
+                      size='compact'
+                    >
+                      <ChevronDown className='h-4 w-4 text-muted-foreground' />
+                    </Button>
                   )}
                 </div>
-              )}
-            </div>
-          </div>
 
-          {/* Token Input - Unified with Auto-fetch */}
-          <div className='grid gap-3'>
-            <Label htmlFor='token'>Token Address</Label>
-            <div className='relative' ref={tokenRef}>
-              <div className='relative'>
-                <Input
-                  id='token'
-                  placeholder='Enter token address or select from list...'
-                  value={tokenInput}
-                  onChange={(value) => {
-                    setTokenInput(value);
-                    setShowTokenDropdown(true);
-                  }}
-                  onFocus={() => setShowTokenDropdown(true)}
-                  disabled={isSubmitting}
-                  className='pr-10'
-                />
-                {tokens.length > 0 && (
-                  <Button
-                    type='button'
-                    variant='ghost'
-                    size='compact'
-                    className='absolute right-0 top-0 h-full px-3'
-                    onClick={() => setShowTokenDropdown(!showTokenDropdown)}
-                    disabled={isSubmitting}
-                  >
-                    <ChevronDown className='h-4 w-4 text-muted-foreground' />
-                  </Button>
+                {/* Operator Dropdown */}
+                {showOperatorDropdown && filteredOperators.length > 0 && (
+                  <div className='absolute z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md'>
+                    <div className='max-h-[200px] overflow-auto'>
+                      {filteredOperators.map((op) => (
+                        <button
+                          key={op.id}
+                          type='button'
+                          className='w-full text-left px-3 py-2 text-sm rounded hover:bg-accent transition-colors'
+                          onClick={() => {
+                            setOperatorInput(op.id);
+                            setShowOperatorDropdown(false);
+                          }}
+                        >
+                          <div className='font-medium font-mono text-xs'>{formatAddress(op.address)}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Operator Validation */}
+                {operatorInput && (
+                  <div className='mt-2'>
+                    {isOperatorValid ? (
+                      <div className='flex items-center gap-2 text-sm text-green-600 dark:text-green-400'>
+                        <CheckCircle2 className='h-4 w-4' />
+                        <span>Valid operator address</span>
+                      </div>
+                    ) : (
+                      <div className='flex items-center gap-2 text-sm text-destructive'>
+                        <AlertCircle className='h-4 w-4' />
+                        <span>Invalid address format</span>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
+            </div>
 
-              {/* Token Dropdown */}
-              {showTokenDropdown && filteredTokens.length > 0 && (
-                <div className='absolute z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md'>
-                  <div className='max-h-[200px] overflow-auto'>
-                    {filteredTokens.map((token) => (
-                      <button
-                        key={token.id}
-                        type='button'
-                        className='w-full text-left px-3 py-2 text-sm rounded hover:bg-accent transition-colors'
-                        onClick={() => {
-                          setTokenInput(token.id);
-                          setShowTokenDropdown(false);
-                        }}
-                      >
-                        <div className='flex items-center justify-between'>
-                          <div>
-                            <div className='font-medium'>{token.symbol}</div>
-                            <div className='text-xs text-muted-foreground'>{token.name}</div>
+            {/* Token Input - Unified with Auto-fetch */}
+            <div className='grid gap-3'>
+              <Label htmlFor='token'>Token Address</Label>
+              <div className='relative' ref={tokenRef}>
+                <div className='relative'>
+                  <Input
+                    id='token'
+                    placeholder='Enter token address or select from list...'
+                    value={tokenInput}
+                    onChange={(value) => {
+                      setTokenInput(value);
+                      setShowTokenDropdown(true);
+                    }}
+                    onFocus={() => setShowTokenDropdown(true)}
+                    disabled={isSubmitting}
+                    className='pr-10'
+                  />
+                  {tokens.length > 0 && (
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      size='compact'
+                      className='absolute right-0 top-0 h-full px-3'
+                      onClick={() => setShowTokenDropdown(!showTokenDropdown)}
+                      disabled={isSubmitting}
+                    >
+                      <ChevronDown className='h-4 w-4 text-muted-foreground' />
+                    </Button>
+                  )}
+                </div>
+
+                {/* Token Dropdown */}
+                {showTokenDropdown && filteredTokens.length > 0 && (
+                  <div className='absolute z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md'>
+                    <div className='max-h-[200px] overflow-auto'>
+                      {filteredTokens.map((token) => (
+                        <button
+                          key={token.id}
+                          type='button'
+                          className='w-full text-left px-3 py-2 text-sm rounded hover:bg-accent transition-colors'
+                          onClick={() => {
+                            setTokenInput(token.id);
+                            setShowTokenDropdown(false);
+                          }}
+                        >
+                          <div className='flex items-center justify-between'>
+                            <div>
+                              <div className='font-medium'>{token.symbol}</div>
+                              <div className='text-xs text-muted-foreground'>{token.name}</div>
+                            </div>
+                            <div className='flex justify-start'>
+                              <Badge variant='secondary'>{`${Number(token.decimals)} decimals`}</Badge>
+                            </div>
                           </div>
-                          <div className='flex justify-start'>
-                            <Badge variant='secondary'>{`${Number(token.decimals)} decimals`}</Badge>
-                          </div>
-                        </div>
-                      </button>
-                    ))}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Token Validation & Details */}
-              {tokenInput && (
-                <div className='mt-2 space-y-2'>
-                  {!tokenAddress ? (
-                    <div className='flex items-center gap-2 text-sm text-destructive'>
-                      <AlertCircle className='h-4 w-4' />
-                      <span>Invalid token address</span>
-                    </div>
-                  ) : isLoadingTokenDetails ? (
-                    <div className='flex items-center gap-2 text-sm text-muted-foreground'>
-                      <Loader2 className='h-4 w-4 animate-spin' />
-                      <span>Loading token details...</span>
-                    </div>
-                  ) : isTokenDetailsError ? (
-                    <div className='flex items-center gap-2 text-sm text-destructive'>
-                      <AlertCircle className='h-4 w-4' />
-                      <span>Failed to load token details</span>
-                    </div>
-                  ) : tokenDetails ? (
-                    <div className='rounded-lg bg-primary/10 p-3 space-y-2'>
-                      <div className='flex items-center gap-2 text-sm text-primary'>
-                        <CheckCircle2 className='h-4 w-4' />
-                        <span className='font-medium'>Token loaded successfully</span>
+                {/* Token Validation & Details */}
+                {tokenInput && (
+                  <div className='mt-2 space-y-2'>
+                    {!tokenAddress ? (
+                      <div className='flex items-center gap-2 text-sm text-destructive'>
+                        <AlertCircle className='h-4 w-4' />
+                        <span>Invalid token address</span>
                       </div>
-                      <div className='grid grid-cols-2 gap-2 text-xs'>
-                        <div>
-                          <span className='text-muted-foreground'>Symbol:</span>{" "}
-                          <span className='font-medium'>{tokenDetails.symbol}</span>
+                    ) : isLoadingTokenDetails ? (
+                      <div className='flex items-center gap-2 text-sm text-muted-foreground'>
+                        <Loader2 className='h-4 w-4 animate-spin' />
+                        <span>Loading token details...</span>
+                      </div>
+                    ) : isTokenDetailsError ? (
+                      <div className='flex items-center gap-2 text-sm text-destructive'>
+                        <AlertCircle className='h-4 w-4' />
+                        <span>Failed to load token details</span>
+                      </div>
+                    ) : tokenDetails ? (
+                      <div className='rounded-lg bg-primary/10 p-3 space-y-2'>
+                        <div className='flex items-center gap-2 text-sm text-primary'>
+                          <CheckCircle2 className='h-4 w-4' />
+                          <span className='font-medium'>Token loaded successfully</span>
                         </div>
-                        <div>
-                          <span className='text-muted-foreground'>Decimals:</span>{" "}
-                          <span className='font-medium'>{tokenDetails.decimals}</span>
-                        </div>
-                        <div className='col-span-2'>
-                          <span className='text-muted-foreground'>Name:</span>{" "}
-                          <span className='font-medium'>{tokenDetails.name}</span>
+                        <div className='grid grid-cols-2 gap-2 text-xs'>
+                          <div>
+                            <span className='text-muted-foreground'>Symbol:</span>{" "}
+                            <span className='font-medium'>{tokenDetails.symbol}</span>
+                          </div>
+                          <div>
+                            <span className='text-muted-foreground'>Decimals:</span>{" "}
+                            <span className='font-medium'>{tokenDetails.decimals}</span>
+                          </div>
+                          <div className='col-span-2'>
+                            <span className='text-muted-foreground'>Name:</span>{" "}
+                            <span className='font-medium'>{tokenDetails.name}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Allowances */}
-          <div className='grid gap-3'>
-            <div className='flex items-center justify-between'>
-              <Label>Allowances</Label>
-              <label className='flex items-center gap-2 text-sm cursor-pointer'>
-                <input
-                  type='checkbox'
-                  checked={isUnlimited}
-                  onChange={(e) => setIsUnlimited(e.target.checked)}
-                  className='rounded'
-                />
-                Unlimited
-              </label>
-            </div>
-            <div className='grid grid-cols-2 gap-3'>
-              <div className='grid gap-2'>
-                <Label htmlFor='lockupAllowance' className='text-xs text-muted-foreground'>
-                  Lockup Allowance
-                </Label>
-                <Input
-                  id='lockupAllowance'
-                  type='number'
-                  placeholder='0.0'
-                  value={lockupAllowance}
-                  onChange={setLockupAllowance}
-                  disabled={isUnlimited || isSubmitting}
-                />
-              </div>
-              <div className='grid gap-2'>
-                <Label htmlFor='rateAllowance' className='text-xs text-muted-foreground'>
-                  Rate Allowance
-                </Label>
-                <Input
-                  id='rateAllowance'
-                  type='number'
-                  placeholder='0.0'
-                  value={rateAllowance}
-                  onChange={setRateAllowance}
-                  disabled={isUnlimited || isSubmitting}
-                />
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Allowances */}
+            <div className='grid gap-3'>
+              <div className='flex items-center justify-between'>
+                <Label>Allowances</Label>
+                <label className='flex items-center gap-2 text-sm cursor-pointer'>
+                  <input
+                    type='checkbox'
+                    checked={isUnlimited}
+                    onChange={(e) => setIsUnlimited(e.target.checked)}
+                    className='rounded'
+                  />
+                  Unlimited
+                </label>
+              </div>
+              <div className='grid grid-cols-2 gap-3'>
+                <div className='grid gap-2'>
+                  <Label htmlFor='lockupAllowance' className='text-xs text-muted-foreground'>
+                    Lockup Allowance
+                  </Label>
+                  <Input
+                    id='lockupAllowance'
+                    type='number'
+                    placeholder='0.0'
+                    value={lockupAllowance}
+                    onChange={setLockupAllowance}
+                    disabled={isUnlimited || isSubmitting}
+                  />
+                </div>
+                <div className='grid gap-2'>
+                  <Label htmlFor='rateAllowance' className='text-xs text-muted-foreground'>
+                    Rate Allowance
+                  </Label>
+                  <Input
+                    id='rateAllowance'
+                    type='number'
+                    placeholder='0.0'
+                    value={rateAllowance}
+                    onChange={setRateAllowance}
+                    disabled={isUnlimited || isSubmitting}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Max Lockup Period */}
+            <div className='grid gap-2'>
+              <Label htmlFor='maxLockupPeriod'>Max Lockup Period (epochs)</Label>
+              <Input
+                id='maxLockupPeriod'
+                type='number'
+                placeholder='e.g., 2880 (1 day)'
+                value={maxLockupPeriod}
+                onChange={setMaxLockupPeriod}
+                disabled={isSubmitting}
+              />
+              <p className='text-xs text-muted-foreground'>Maximum duration the operator can lock your funds</p>
+            </div>
           </div>
 
-          {/* Max Lockup Period */}
-          <div className='grid gap-2'>
-            <Label htmlFor='maxLockupPeriod'>Max Lockup Period (epochs)</Label>
-            <Input
-              id='maxLockupPeriod'
-              type='number'
-              placeholder='e.g., 2880 (1 day)'
-              value={maxLockupPeriod}
-              onChange={setMaxLockupPeriod}
-              disabled={isSubmitting}
-            />
-            <p className='text-xs text-muted-foreground'>Maximum duration the operator can lock your funds</p>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button
-            variant='ghost'
-            onClick={() => onOpenChange(false)}
-            disabled={isSubmitting || isExecuting}
-            size='compact'
-          >
-            Cancel
-          </Button>
-          <Button variant='primary' onClick={handleApprove} disabled={!canSubmit} size='compact'>
-            {isSubmitting || isExecuting ? (
-              <span className='flex items-center gap-2'>
-                <Loader2 className='h-4 w-4 animate-spin mr-2' />
-                Processing...
-              </span>
-            ) : (
-              "Approve Operator"
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <Button
+              variant='ghost'
+              onClick={() => onOpenChange(false)}
+              disabled={isSubmitting || isExecuting}
+              size='compact'
+            >
+              Cancel
+            </Button>
+            <Button variant='primary' onClick={handleApprove} disabled={!canSubmit} size='compact'>
+              {isSubmitting || isExecuting ? (
+                <span className='flex items-center gap-2'>
+                  <Loader2 className='h-4 w-4 animate-spin mr-2' />
+                  Processing...
+                </span>
+              ) : (
+                "Approve Operator"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };

@@ -13,6 +13,7 @@ import { AlertCircle, CheckCircle2, Loader2, Wallet } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { erc20Abi, formatUnits, type Hex, isAddress, maxUint256, parseUnits } from "viem";
 import { useAccount, usePublicClient, useReadContract, useReadContracts, useWalletClient } from "wagmi";
+import { useTransactionReview } from "@/components/UserConsole/TransactionReview";
 import { useContractTransaction } from "@/hooks/useContractTransaction";
 import useSynapse from "@/hooks/useSynapse";
 import { getPermitSignature } from "@/utils/permit";
@@ -44,6 +45,7 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
   const { synapse, constants } = useSynapse();
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
+  const { requestReview, reviewDialog } = useTransactionReview();
 
   const { execute, isExecuting } = useContractTransaction({
     contractAddress: constants.contracts.payments.address,
@@ -159,6 +161,37 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
     const tokenAmountInWei = BigInt(parseUnits(tokenAmount, Number(tokenDecimals)).toString());
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
 
+    // Embedded wallets sign without any wallet prompt, so the console shows
+    // its own review step first (once per action; user can opt out).
+    const approved = await requestReview({
+      title: `Deposit ${tokenAmount} ${tokenDetails.symbol} and approve operator`,
+      rows: [
+        { label: "Amount", value: `${tokenAmount} ${tokenDetails.symbol}` },
+        { label: "Operator", value: operatorAddress },
+        { label: "Rate allowance", value: isUnlimited ? "Unlimited" : rateAllowance || "0" },
+        { label: "Lockup allowance", value: isUnlimited ? "Unlimited" : lockupAllowance || "0" },
+        { label: "Network", value: constants.chain.name },
+        { label: "Wallet", value: userAddress },
+      ],
+      details: JSON.stringify(
+        {
+          function: "depositWithPermitAndApproveOperator",
+          token: validatedTokenAddress,
+          owner: userAddress,
+          spender: constants.contracts.payments.address,
+          amountWei: tokenAmountInWei.toString(),
+          operator: operatorAddress,
+          rateAllowanceWei: rateInWei.toString(),
+          lockupAllowanceWei: lockupInWei.toString(),
+          maxLockupPeriod,
+          chainId: constants.chain.id,
+        },
+        null,
+        2,
+      ),
+    });
+    if (!approved) return;
+
     setIsSubmitting(true);
 
     try {
@@ -217,243 +250,246 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
   const canSubmit = isOperatorValid && isTokenValid && maxLockupPeriod && !isSubmitting && !isExecuting;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-[600px] max-h-[90vh] overflow-y-auto'>
-        <DialogHeader>
-          <DialogTitle>Approve Operator</DialogTitle>
-          <DialogDescription>
-            Grant an operator permission to manage payments on your behalf with specified limits.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      {reviewDialog}
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className='sm:max-w-[600px] max-h-[90vh] overflow-y-auto'>
+          <DialogHeader>
+            <DialogTitle>Approve Operator</DialogTitle>
+            <DialogDescription>
+              Grant an operator permission to manage payments on your behalf with specified limits.
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className='grid gap-6 py-4'>
-          {/* Token Input - Unified with Auto-fetch */}
-          <div className='grid gap-3'>
-            <Label htmlFor='token'>Token Address</Label>
-            <div className='relative' ref={tokenRef}>
-              <div className='relative'>
-                <Input
-                  id='token'
-                  placeholder='Enter token address 0x...'
-                  value={tokenInput}
-                  onChange={setTokenInput}
-                  disabled={isSubmitting}
-                  className='pr-10'
-                />
-              </div>
-
-              {/* Token Validation & Details */}
-              {tokenInput && (
-                <div className='mt-2 space-y-2'>
-                  {!validatedTokenAddress ? (
-                    <div className='flex items-center gap-2 text-sm text-destructive'>
-                      <AlertCircle className='h-4 w-4' />
-                      <span>Invalid token address</span>
-                    </div>
-                  ) : isLoadingTokenDetails ? (
-                    <div className='flex items-center gap-2 text-sm text-muted-foreground'>
-                      <Loader2 className='h-4 w-4 animate-spin' />
-                      <span>Loading token details...</span>
-                    </div>
-                  ) : isTokenDetailsError ? (
-                    <div className='flex items-center gap-2 text-sm text-destructive'>
-                      <AlertCircle className='h-4 w-4' />
-                      <span>Failed to load token details</span>
-                    </div>
-                  ) : tokenDetails ? (
-                    <div className='rounded-lg bg-primary/10 p-3 space-y-2'>
-                      <div className='flex items-center gap-2 text-sm text-primary'>
-                        <CheckCircle2 className='h-4 w-4' />
-                        <span className='font-medium'>Token loaded successfully</span>
-                      </div>
-                      <div className='grid grid-cols-2 gap-2 text-xs'>
-                        <div>
-                          <span className='text-muted-foreground'>Symbol:</span>{" "}
-                          <span className='font-medium'>{tokenDetails.symbol}</span>
-                        </div>
-                        <div>
-                          <span className='text-muted-foreground'>Decimals:</span>{" "}
-                          <span className='font-medium'>{tokenDetails.decimals}</span>
-                        </div>
-                        <div className='col-span-2'>
-                          <span className='text-muted-foreground'>Name:</span>{" "}
-                          <span className='font-medium'>{tokenDetails.name}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
+          <div className='grid gap-6 py-4'>
+            {/* Token Input - Unified with Auto-fetch */}
+            <div className='grid gap-3'>
+              <Label htmlFor='token'>Token Address</Label>
+              <div className='relative' ref={tokenRef}>
+                <div className='relative'>
+                  <Input
+                    id='token'
+                    placeholder='Enter token address 0x...'
+                    value={tokenInput}
+                    onChange={setTokenInput}
+                    disabled={isSubmitting}
+                    className='pr-10'
+                  />
                 </div>
-              )}
-            </div>
-          </div>
 
-          {/* Token Amount */}
-          {tokenDetails && (
-            <div className='grid gap-2'>
-              <div className='flex items-center justify-between'>
-                <Label htmlFor='amount'>Amount</Label>
-                {(balance !== undefined || isLoadingBalance) && (
-                  <div className='flex items-center gap-2 text-xs text-muted-foreground'>
-                    <Wallet className='h-3 w-3' />
-                    <span>
-                      Balance:{" "}
-                      {isLoadingBalance || balance === undefined ? (
-                        <Loader2 className='h-3 w-3 animate-spin inline' />
-                      ) : (
-                        <span className='font-medium text-foreground'>
-                          {Number(formatUnits(balance, tokenDetails.decimals)).toLocaleString(undefined, {
-                            maximumFractionDigits: 6,
-                          })}{" "}
-                          {tokenDetails.symbol}
-                        </span>
-                      )}
-                    </span>
+                {/* Token Validation & Details */}
+                {tokenInput && (
+                  <div className='mt-2 space-y-2'>
+                    {!validatedTokenAddress ? (
+                      <div className='flex items-center gap-2 text-sm text-destructive'>
+                        <AlertCircle className='h-4 w-4' />
+                        <span>Invalid token address</span>
+                      </div>
+                    ) : isLoadingTokenDetails ? (
+                      <div className='flex items-center gap-2 text-sm text-muted-foreground'>
+                        <Loader2 className='h-4 w-4 animate-spin' />
+                        <span>Loading token details...</span>
+                      </div>
+                    ) : isTokenDetailsError ? (
+                      <div className='flex items-center gap-2 text-sm text-destructive'>
+                        <AlertCircle className='h-4 w-4' />
+                        <span>Failed to load token details</span>
+                      </div>
+                    ) : tokenDetails ? (
+                      <div className='rounded-lg bg-primary/10 p-3 space-y-2'>
+                        <div className='flex items-center gap-2 text-sm text-primary'>
+                          <CheckCircle2 className='h-4 w-4' />
+                          <span className='font-medium'>Token loaded successfully</span>
+                        </div>
+                        <div className='grid grid-cols-2 gap-2 text-xs'>
+                          <div>
+                            <span className='text-muted-foreground'>Symbol:</span>{" "}
+                            <span className='font-medium'>{tokenDetails.symbol}</span>
+                          </div>
+                          <div>
+                            <span className='text-muted-foreground'>Decimals:</span>{" "}
+                            <span className='font-medium'>{tokenDetails.decimals}</span>
+                          </div>
+                          <div className='col-span-2'>
+                            <span className='text-muted-foreground'>Name:</span>{" "}
+                            <span className='font-medium'>{tokenDetails.name}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>
-              <div className='relative'>
-                <Input
-                  id='amount'
-                  type='number'
-                  placeholder='0.0'
-                  value={tokenAmount}
-                  onChange={setTokenAmount}
-                  min='0'
-                  step='any'
-                  disabled={isSubmitting}
-                  className='text-lg pr-16'
-                />
-                <Button
-                  type='button'
-                  variant='ghost'
-                  className='absolute right-1 top-1/2 -translate-y-1/2 h-7 px-2 text-xs font-semibold'
-                  onClick={handleMaxClick}
-                  disabled={isSubmitting || balance === undefined || isLoadingBalance}
-                >
-                  MAX
-                </Button>
-              </div>
-              <p className='text-xs text-muted-foreground'>
-                Enter the amount of {tokenDetails.symbol} you want to deposit
-              </p>
             </div>
-          )}
 
-          {/* Operator Input - Unified */}
-          <div className='grid gap-3'>
-            <Label htmlFor='operator'>Operator Address</Label>
-            <div className='relative' ref={operatorRef}>
-              <div className='relative'>
-                <Input
-                  id='operator'
-                  placeholder='Enter Operator address 0x...'
-                  value={operatorInput}
-                  onChange={setOperatorInput}
-                  disabled={isSubmitting}
-                  className='pr-10'
-                />
-              </div>
-
-              {/* Operator Validation */}
-              {operatorInput && (
-                <div className='mt-2'>
-                  {isOperatorValid ? (
-                    <div className='flex items-center gap-2 text-sm text-green-600 dark:text-green-400'>
-                      <CheckCircle2 className='h-4 w-4' />
-                      <span>Valid operator address</span>
-                    </div>
-                  ) : (
-                    <div className='flex items-center gap-2 text-sm text-destructive'>
-                      <AlertCircle className='h-4 w-4' />
-                      <span>Invalid address format</span>
+            {/* Token Amount */}
+            {tokenDetails && (
+              <div className='grid gap-2'>
+                <div className='flex items-center justify-between'>
+                  <Label htmlFor='amount'>Amount</Label>
+                  {(balance !== undefined || isLoadingBalance) && (
+                    <div className='flex items-center gap-2 text-xs text-muted-foreground'>
+                      <Wallet className='h-3 w-3' />
+                      <span>
+                        Balance:{" "}
+                        {isLoadingBalance || balance === undefined ? (
+                          <Loader2 className='h-3 w-3 animate-spin inline' />
+                        ) : (
+                          <span className='font-medium text-foreground'>
+                            {Number(formatUnits(balance, tokenDetails.decimals)).toLocaleString(undefined, {
+                              maximumFractionDigits: 6,
+                            })}{" "}
+                            {tokenDetails.symbol}
+                          </span>
+                        )}
+                      </span>
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Allowances */}
-          <div className='grid gap-3'>
-            <div className='flex items-center justify-between'>
-              <Label>Allowances</Label>
-              <label className='flex items-center gap-2 text-sm cursor-pointer'>
-                <input
-                  type='checkbox'
-                  checked={isUnlimited}
-                  onChange={(e) => setIsUnlimited(e.target.checked)}
-                  className='rounded'
-                />
-                Unlimited
-              </label>
-            </div>
-            <div className='grid grid-cols-2 gap-3'>
-              <div className='grid gap-2'>
-                <Label htmlFor='lockupAllowance' className='text-xs text-muted-foreground'>
-                  Lockup Allowance
-                </Label>
-                <Input
-                  id='lockupAllowance'
-                  type='number'
-                  placeholder='0.0'
-                  value={lockupAllowance}
-                  onChange={setLockupAllowance}
-                  disabled={isUnlimited || isSubmitting}
-                />
+                <div className='relative'>
+                  <Input
+                    id='amount'
+                    type='number'
+                    placeholder='0.0'
+                    value={tokenAmount}
+                    onChange={setTokenAmount}
+                    min='0'
+                    step='any'
+                    disabled={isSubmitting}
+                    className='text-lg pr-16'
+                  />
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    className='absolute right-1 top-1/2 -translate-y-1/2 h-7 px-2 text-xs font-semibold'
+                    onClick={handleMaxClick}
+                    disabled={isSubmitting || balance === undefined || isLoadingBalance}
+                  >
+                    MAX
+                  </Button>
+                </div>
+                <p className='text-xs text-muted-foreground'>
+                  Enter the amount of {tokenDetails.symbol} you want to deposit
+                </p>
               </div>
-              <div className='grid gap-2'>
-                <Label htmlFor='rateAllowance' className='text-xs text-muted-foreground'>
-                  Rate Allowance
-                </Label>
-                <Input
-                  id='rateAllowance'
-                  type='number'
-                  placeholder='0.0'
-                  value={rateAllowance}
-                  onChange={setRateAllowance}
-                  disabled={isUnlimited || isSubmitting}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Max Lockup Period */}
-          <div className='grid gap-2'>
-            <Label htmlFor='maxLockupPeriod'>Max Lockup Period (epochs)</Label>
-            <Input
-              id='maxLockupPeriod'
-              type='number'
-              placeholder='e.g., 2880 (1 day)'
-              value={maxLockupPeriod}
-              onChange={setMaxLockupPeriod}
-              disabled={isSubmitting}
-            />
-            <p className='text-xs text-muted-foreground'>Maximum duration the operator can lock your funds</p>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button
-            variant='ghost'
-            onClick={() => onOpenChange(false)}
-            disabled={isSubmitting || isExecuting}
-            size='compact'
-          >
-            Cancel
-          </Button>
-          <Button variant='primary' onClick={handleDepositAndApprove} disabled={!canSubmit} size='compact'>
-            {isSubmitting || isExecuting ? (
-              <span className='flex items-center gap-2'>
-                <Loader2 className='h-4 w-4 animate-spin mr-2' />
-                Processing...
-              </span>
-            ) : (
-              "Deposit & Approve Operator"
             )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
+            {/* Operator Input - Unified */}
+            <div className='grid gap-3'>
+              <Label htmlFor='operator'>Operator Address</Label>
+              <div className='relative' ref={operatorRef}>
+                <div className='relative'>
+                  <Input
+                    id='operator'
+                    placeholder='Enter Operator address 0x...'
+                    value={operatorInput}
+                    onChange={setOperatorInput}
+                    disabled={isSubmitting}
+                    className='pr-10'
+                  />
+                </div>
+
+                {/* Operator Validation */}
+                {operatorInput && (
+                  <div className='mt-2'>
+                    {isOperatorValid ? (
+                      <div className='flex items-center gap-2 text-sm text-green-600 dark:text-green-400'>
+                        <CheckCircle2 className='h-4 w-4' />
+                        <span>Valid operator address</span>
+                      </div>
+                    ) : (
+                      <div className='flex items-center gap-2 text-sm text-destructive'>
+                        <AlertCircle className='h-4 w-4' />
+                        <span>Invalid address format</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Allowances */}
+            <div className='grid gap-3'>
+              <div className='flex items-center justify-between'>
+                <Label>Allowances</Label>
+                <label className='flex items-center gap-2 text-sm cursor-pointer'>
+                  <input
+                    type='checkbox'
+                    checked={isUnlimited}
+                    onChange={(e) => setIsUnlimited(e.target.checked)}
+                    className='rounded'
+                  />
+                  Unlimited
+                </label>
+              </div>
+              <div className='grid grid-cols-2 gap-3'>
+                <div className='grid gap-2'>
+                  <Label htmlFor='lockupAllowance' className='text-xs text-muted-foreground'>
+                    Lockup Allowance
+                  </Label>
+                  <Input
+                    id='lockupAllowance'
+                    type='number'
+                    placeholder='0.0'
+                    value={lockupAllowance}
+                    onChange={setLockupAllowance}
+                    disabled={isUnlimited || isSubmitting}
+                  />
+                </div>
+                <div className='grid gap-2'>
+                  <Label htmlFor='rateAllowance' className='text-xs text-muted-foreground'>
+                    Rate Allowance
+                  </Label>
+                  <Input
+                    id='rateAllowance'
+                    type='number'
+                    placeholder='0.0'
+                    value={rateAllowance}
+                    onChange={setRateAllowance}
+                    disabled={isUnlimited || isSubmitting}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Max Lockup Period */}
+            <div className='grid gap-2'>
+              <Label htmlFor='maxLockupPeriod'>Max Lockup Period (epochs)</Label>
+              <Input
+                id='maxLockupPeriod'
+                type='number'
+                placeholder='e.g., 2880 (1 day)'
+                value={maxLockupPeriod}
+                onChange={setMaxLockupPeriod}
+                disabled={isSubmitting}
+              />
+              <p className='text-xs text-muted-foreground'>Maximum duration the operator can lock your funds</p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant='ghost'
+              onClick={() => onOpenChange(false)}
+              disabled={isSubmitting || isExecuting}
+              size='compact'
+            >
+              Cancel
+            </Button>
+            <Button variant='primary' onClick={handleDepositAndApprove} disabled={!canSubmit} size='compact'>
+              {isSubmitting || isExecuting ? (
+                <span className='flex items-center gap-2'>
+                  <Loader2 className='h-4 w-4 animate-spin mr-2' />
+                  Processing...
+                </span>
+              ) : (
+                "Deposit & Approve Operator"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 
