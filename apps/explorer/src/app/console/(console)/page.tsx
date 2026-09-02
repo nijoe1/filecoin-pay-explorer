@@ -9,7 +9,7 @@ import {
   RailsSection,
   TopUpDialogController,
 } from "@/components/UserConsole";
-import { AccountNotFound, ErrorState, UnsupportedChain } from "@/components/UserConsole/States";
+import { AccountNotFound, ErrorState, StaleDataNotice, UnsupportedChain } from "@/components/UserConsole/States";
 import { useTopUpActivity } from "@/components/UserConsole/TopUpActivityContext";
 import { SQUID_SOURCE_CHAINS } from "@/constants/chains";
 import { useAccountDetails } from "@/hooks/useAccountDetails";
@@ -69,14 +69,13 @@ const AccountSections = ({
   return (
     <>
       <div className='flex flex-col gap-6'>
+        {/* A failed background refetch still leaves the last good account on screen. */}
+        {error ? <StaleDataNotice error={error} /> : null}
         <FundsSection account={account} network={network} onGuidedTopUp={onGuidedTopUp} />
         {alertsBanner}
       </div>
       <RailsSection account={account} network={network} userAddress={userAddress} />
       <OperatorApprovalsSection account={account} network={network} />
-
-      {/* A failed background refetch still leaves the last good account on screen. */}
-      {error ? <ErrorState error={error} /> : null}
     </>
   );
 };

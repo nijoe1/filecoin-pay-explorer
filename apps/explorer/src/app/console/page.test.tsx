@@ -60,12 +60,12 @@ vi.mock("@/components/UserConsole/States", () => ({
     </div>
   ),
   ErrorState: () => <div>Account error</div>,
+  StaleDataNotice: () => <div>Stale data</div>,
   NotConnected: () => <div>Not connected</div>,
   UnsupportedChain: () => <div>Unsupported network</div>,
 }));
 vi.mock("@/components/UserConsole", () => ({
   AlertsBanner: () => null,
-  BetaWarning: () => null,
   FundsSection: ({
     account,
     network,

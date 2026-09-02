@@ -1,7 +1,7 @@
 export { AccountInfo, AccountInfoSkeleton } from "./AccountInfo";
 export { AlertsBanner } from "./AlertsBanner";
 export { ApproveOperatorDialog } from "./ApproveOperatorDialog";
-export { BetaWarning } from "./BetaWarning";
+export { BetaBadge } from "./BetaBadge";
 export { DepositDialog } from "./DepositDialog";
 export { FundsSection } from "./FundsSection";
 export { TopUpDialogController } from "./FundsSection/TopUpDialogController";
