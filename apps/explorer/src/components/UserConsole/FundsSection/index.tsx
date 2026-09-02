@@ -1,5 +1,6 @@
 import type { Account, UserToken } from "@filecoin-pay/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useConnection } from "wagmi";
 import { DepositDialog } from "@/components/UserConsole/DepositDialog";
 import { useFundingLaunch } from "@/components/UserConsole/FundingLaunchContext";
 import { WithdrawDialog } from "@/components/UserConsole/WithdrawDialog";
@@ -17,6 +18,7 @@ import {
   FundsSectionLayout,
   TokenSelect,
 } from "./components";
+import { useCardPurchase } from "./hooks/useCardPurchase";
 
 type FundsSectionProps = {
   account: Account;
@@ -96,6 +98,8 @@ export const FundsSection = ({ account, network, onGuidedTopUp }: FundsSectionPr
 
   // The USDC dialog is rendered once by UsdcFundingHost in the console layout.
   const { openUsdcFunding } = useFundingLaunch();
+  const { address } = useConnection();
+  const card = useCardPurchase({ address, onPurchased: openUsdcFunding });
 
   const handleOpenDeposit = useCallback(() => {
     if (canUseGuidedTopUp) {
@@ -116,9 +120,13 @@ export const FundsSection = ({ account, network, onGuidedTopUp }: FundsSectionPr
         openUsdcFunding();
         return;
       }
+      if (method === "card") {
+        void card.buyWithCard();
+        return;
+      }
       onGuidedTopUp?.();
     },
-    [onGuidedTopUp, openDirectDeposit, openUsdcFunding],
+    [card.buyWithCard, onGuidedTopUp, openDirectDeposit, openUsdcFunding],
   );
 
   const handleOpenWithdraw = useCallback(() => {
@@ -158,6 +166,7 @@ export const FundsSection = ({ account, network, onGuidedTopUp }: FundsSectionPr
 
       {canUseGuidedTopUp ? (
         <AddFundsDialog
+          cardLabel={card.label}
           onOpenChange={setAddFundsOpen}
           onSelect={handleChooseMethod}
           open={addFundsOpen}

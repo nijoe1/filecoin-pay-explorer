@@ -9,6 +9,7 @@ const OTHER_TOKEN = "0x4444444444444444444444444444444444444444";
 
 const tokenState = vi.hoisted(() => ({ userTokens: [] as UserToken[] }));
 const launch = vi.hoisted(() => ({ openUsdcFunding: vi.fn() }));
+const card = vi.hoisted(() => ({ buyWithCard: vi.fn(), label: "Buy USDC with card" }));
 
 vi.mock("@/hooks/useAccountDetails", () => ({
   useAccountTokens: () => ({ data: { userTokens: tokenState.userTokens }, isError: false, isLoading: false }),
@@ -17,16 +18,27 @@ vi.mock("@/hooks/useSynapse", () => ({
   default: () => ({ constants: { contracts: { usdfc: USDFC } } }),
 }));
 vi.mock("@/components/UserConsole/FundingLaunchContext", () => ({ useFundingLaunch: () => launch }));
+vi.mock("wagmi", () => ({ useConnection: () => ({ address: "0x1111111111111111111111111111111111111111" }) }));
+vi.mock("./hooks/useCardPurchase", () => ({ useCardPurchase: () => card }));
 vi.mock("@/components/UserConsole/DepositDialog", () => ({
   DepositDialog: ({ open }: { open: boolean }) => (open ? <div data-direct-deposit /> : null),
 }));
 vi.mock("@/components/UserConsole/WithdrawDialog", () => ({ WithdrawDialog: () => null }));
 vi.mock("./components", () => ({
-  AddFundsDialog: ({ onSelect, open }: { onSelect: (method: "deposit" | "squid" | "usdc") => void; open: boolean }) =>
+  AddFundsDialog: ({
+    cardLabel,
+    onSelect,
+    open,
+  }: {
+    cardLabel?: string;
+    onSelect: (method: "card" | "deposit" | "squid" | "usdc") => void;
+    open: boolean;
+  }) =>
     open ? (
       <>
         <button aria-label='Choose Squid funding' onClick={() => onSelect("squid")} type='button' />
         <button aria-label='Choose USDC funding' onClick={() => onSelect("usdc")} type='button' />
+        <button aria-label={cardLabel} onClick={() => onSelect("card")} type='button' />
       </>
     ) : null,
   FundsEmptyState: ({ onDeposit }: { onDeposit: () => void }) => (
@@ -109,6 +121,14 @@ describe("FundsSection USDC funding", () => {
     });
     expect(launch.openUsdcFunding).toHaveBeenCalledOnce();
     expect(renderer.root.findAllByProps({ "aria-label": "Choose USDC funding" })).toHaveLength(0);
+
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Add funds to empty account" }).props.onClick();
+    });
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Buy USDC with card" }).props.onClick();
+    });
+    expect(card.buyWithCard).toHaveBeenCalledOnce();
 
     await act(async () => renderer.unmount());
   });

@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@filecoin-pay/ui/components/dropdown-menu";
-import { useConnectWallet, useExportWallet, useFiatOnramp, useLogin, usePrivy } from "@privy-io/react-auth";
+import { useConnectWallet, useExportWallet, usePrivy } from "@privy-io/react-auth";
 import {
   ArrowUpRightIcon,
   Check,
@@ -21,20 +21,14 @@ import {
   ShieldCheck,
   Wallet,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { type Address, erc20Abi, formatEther } from "viem";
 import { useAccount, useBalance, useDisconnect, useReadContract, useWalletClient } from "wagmi";
 import FilecoinLogo from "@/assests/FilecoinLogo";
 import USDFCLogo from "@/assests/USDFCLogo";
 import { useFundingLaunch } from "@/components/UserConsole/FundingLaunchContext";
 import { isUsdcFundingAvailable } from "@/components/UserConsole/FundsSection/data/usdc-funding-availability";
-import {
-  BASE_CHAIN_ID,
-  BASE_USDC,
-  buildCardOnrampOptions,
-  readOnrampEnvironment,
-  runPrivyFunding,
-} from "@/components/UserConsole/privy-funding";
+import { useCardPurchase } from "@/components/UserConsole/FundsSection/hooks/useCardPurchase";
 import { isReviewEnabled, setReviewEnabled, useIsEmbeddedSigner } from "@/components/UserConsole/TransactionReview";
 import useSynapse from "@/hooks/useSynapse";
 import { formatAddress } from "@/utils/formatter";
@@ -44,11 +38,11 @@ const Balance = () => {
   const { address, chainId } = useAccount();
   const { disconnect } = useDisconnect();
   const { authenticated, logout } = usePrivy();
-  const { fund: fundWithCard } = useFiatOnramp();
   const { connectWallet } = useConnectWallet();
   const { exportWallet } = useExportWallet();
   const { openUsdcFunding } = useFundingLaunch();
   const canFundWithUsdc = isUsdcFundingAvailable(chainId);
+  const card = useCardPurchase({ address, onPurchased: openUsdcFunding });
   const isEmbeddedSigner = useIsEmbeddedSigner();
   const [reviewOn, setReviewOn] = useState(() => isReviewEnabled());
   const { data: walletClient } = useWalletClient();
@@ -76,40 +70,6 @@ const Balance = () => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  };
-
-  /** Privy's card onramp into the console wallet on Base, then straight into USDC funding. */
-  const buyUsdcWithCard = async () => {
-    if (!address) return;
-    const funded = await runPrivyFunding(
-      () =>
-        fundWithCard(
-          buildCardOnrampOptions({
-            address,
-            asset: BASE_USDC,
-            chainId: BASE_CHAIN_ID,
-            environment: readOnrampEnvironment(),
-          }),
-        ),
-      { unavailableTitle: "Card purchases are unavailable" },
-    );
-    if (funded) openUsdcFunding();
-  };
-
-  // Privy's onramp needs a Privy session, so a connect-only wallet logs in
-  // first and the purchase continues once login completes.
-  const cardPurchaseAfterLogin = useRef(false);
-  const { login } = useLogin({
-    onComplete: () => {
-      if (!cardPurchaseAfterLogin.current) return;
-      cardPurchaseAfterLogin.current = false;
-      void buyUsdcWithCard();
-    },
-  });
-  const buyUsdcWithCardOrLogin = () => {
-    if (authenticated) return buyUsdcWithCard();
-    cardPurchaseAfterLogin.current = true;
-    login();
   };
 
   const addUsdfcToken = async () => {
@@ -181,14 +141,12 @@ const Balance = () => {
         {canFundWithUsdc ? (
           <DropdownMenuItem onClick={openUsdcFunding} className='cursor-pointer py-2'>
             <Coins />
-            <span className='text-base text-zinc-950'>Fund with USDC</span>
+            <span className='text-base text-zinc-950'>Add funds</span>
           </DropdownMenuItem>
         ) : null}
-        <DropdownMenuItem onClick={() => void buyUsdcWithCardOrLogin()} className='cursor-pointer py-2'>
+        <DropdownMenuItem onClick={() => void card.buyWithCard()} className='cursor-pointer py-2'>
           <CreditCard />
-          <span className='text-base text-zinc-950'>
-            {authenticated ? "Buy USDC with card" : "Log in to buy with card"}
-          </span>
+          <span className='text-base text-zinc-950'>{card.label}</span>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => connectWallet()} className='cursor-pointer py-2'>
           <PlugZap />

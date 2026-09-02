@@ -110,8 +110,8 @@ export function TopUpDialogController({ accountId, children }: TopUpDialogContro
     <>
       {hasSavedAcquisition && !open && (
         <div className='flex justify-center'>
-          <Button aria-label='View top-up in progress' onClick={openTopUp} variant='tertiary'>
-            Top-up in progress — view
+          <Button aria-label='View swap in progress' onClick={openTopUp} variant='tertiary'>
+            Swap in progress — view
           </Button>
         </div>
       )}

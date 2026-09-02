@@ -3,7 +3,7 @@
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 
 type FundingLaunch = {
-  /** Whether the console-wide "Fund with USDC" dialog is open. */
+  /** Whether the console-wide "Pay with USDC" dialog is open. */
   isUsdcFundingOpen: boolean;
   openUsdcFunding: () => void;
   closeUsdcFunding: () => void;

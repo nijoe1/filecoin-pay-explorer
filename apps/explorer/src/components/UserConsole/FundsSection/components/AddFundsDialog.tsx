@@ -7,15 +7,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@filecoin-pay/ui/components/dialog";
-import { ArrowRight, Coins, Repeat, Wallet } from "lucide-react";
+import { ArrowRight, Coins, CreditCard, Repeat, Wallet } from "lucide-react";
 import type { ReactNode } from "react";
 
-export type AddFundsMethod = "deposit" | "squid" | "usdc";
+export type AddFundsMethod = "card" | "deposit" | "squid" | "usdc";
 
 type AddFundsDialogProps = {
+  /** "Buy USDC with card", or the log-in variant when there is no Privy session. */
+  cardLabel?: string;
   onOpenChange: (open: boolean) => void;
   onSelect: (method: AddFundsMethod) => void;
   open: boolean;
+  /** Card and USDC payments deposit into Filecoin mainnet, so they are hidden elsewhere. */
   squidAvailable: boolean;
   squidDisabledReason?: string;
 };
@@ -64,7 +67,9 @@ function FundingMethodCard({ badge, description, disabled = false, icon, label, 
   );
 }
 
+/** The one place funding methods are named, reached from every "Add funds" action. */
 export function AddFundsDialog({
+  cardLabel = "Buy USDC with card",
   onOpenChange,
   onSelect,
   open,
@@ -76,50 +81,46 @@ export function AddFundsDialog({
       <DialogContent className='sm:max-w-[520px]'>
         <DialogHeader>
           <DialogTitle>Add funds</DialogTitle>
-          <DialogDescription>Choose how you want to fund your Filecoin Pay account.</DialogDescription>
+          <DialogDescription>Choose how to add funds to your Filecoin Pay account.</DialogDescription>
         </DialogHeader>
         <div className='grid gap-3'>
+          {squidAvailable && (
+            <>
+              <FundingMethodCard
+                description='Buy USDC by card, then pay it into your account.'
+                icon={<CreditCard className='h-5 w-5' />}
+                label={cardLabel}
+                onSelect={() => onSelect("card")}
+              />
+              <FundingMethodCard
+                description='From any connected wallet. It arrives as USDFC in your account, with nothing to sign on Filecoin.'
+                icon={<Coins className='h-5 w-5' />}
+                label='Pay with USDC'
+                onSelect={() => onSelect("usdc")}
+              />
+            </>
+          )}
           <FundingMethodCard
             description='Already hold USDFC or another token on Filecoin? Deposit it directly.'
             icon={<Wallet className='h-5 w-5' />}
-            label='Deposit token'
+            label='Deposit USDFC'
             onSelect={() => onSelect("deposit")}
           />
-          {squidAvailable && (
-            <FundingMethodCard
-              description='Pay USDC from your Privy wallet or another wallet. It arrives as USDFC in your account, with nothing to sign on Filecoin.'
-              icon={<Coins className='h-5 w-5' />}
-              label='Fund with USDC'
-              onSelect={() => onSelect("usdc")}
-            />
-          )}
+          <p className='mt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground'>Other ways</p>
           <FundingMethodCard
             badge={squidAvailable ? undefined : "Testnet"}
             description={
-              squidAvailable ? (
-                <>
-                  Swap ETH, USDC and more from another chain into USDFC via{" "}
-                  {/* `relative` lifts the link above the stretched button so it stays clickable. */}
-                  <a
-                    className='relative underline underline-offset-2'
-                    href='https://app.squidrouter.com/'
-                    rel='noopener noreferrer'
-                    target='_blank'
-                  >
-                    Squid
-                  </a>{" "}
-                  to top up.
-                </>
-              ) : (
-                (squidDisabledReason ?? "Available on Filecoin mainnet.")
-              )
+              squidAvailable
+                ? "Swap ETH, USDC and more from another network into USDFC, then deposit it."
+                : (squidDisabledReason ?? "Available on Filecoin mainnet.")
             }
             disabled={!squidAvailable}
             icon={<Repeat className='h-5 w-5' />}
-            label='Swap to USDFC'
+            label='Swap another token'
             onSelect={() => onSelect("squid")}
           />
         </div>
+        <p className='text-xs text-muted-foreground'>Card purchases run through Privy; swaps run through Squid.</p>
       </DialogContent>
     </Dialog>
   );

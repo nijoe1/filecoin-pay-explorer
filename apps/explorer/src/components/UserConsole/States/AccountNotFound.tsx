@@ -4,10 +4,12 @@ import { Button } from "@filecoin-foundation/ui-filecoin/Button";
 import { EmptyStateCard } from "@filecoin-foundation/ui-filecoin/EmptyStateCard";
 import { WalletIcon } from "@phosphor-icons/react";
 import { useState } from "react";
+import { useConnection } from "wagmi";
 import DepositAndApproveDialog from "../DepositAndApproveDialog";
 import { DepositDialog } from "../DepositDialog";
 import { useFundingLaunch } from "../FundingLaunchContext";
 import { AddFundsDialog, type AddFundsMethod } from "../FundsSection/components";
+import { useCardPurchase } from "../FundsSection/hooks/useCardPurchase";
 
 type AccountNotFoundProps = {
   /** Opens the guided any-token swap; absent where Squid funding is unavailable. */
@@ -21,6 +23,8 @@ type AccountNotFoundProps = {
  */
 const AccountNotFound = ({ onGuidedTopUp }: AccountNotFoundProps) => {
   const { openUsdcFunding } = useFundingLaunch();
+  const { address } = useConnection();
+  const card = useCardPurchase({ address, onPurchased: openUsdcFunding });
   const [addFundsOpen, setAddFundsOpen] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
   const [depositAndApproveOpen, setDepositAndApproveOpen] = useState(false);
@@ -29,6 +33,7 @@ const AccountNotFound = ({ onGuidedTopUp }: AccountNotFoundProps) => {
   const chooseMethod = (method: AddFundsMethod) => {
     setAddFundsOpen(false);
     if (method === "usdc") openUsdcFunding();
+    else if (method === "card") void card.buyWithCard();
     else if (method === "squid") onGuidedTopUp?.();
     else setDepositOpen(true);
   };
@@ -50,6 +55,7 @@ const AccountNotFound = ({ onGuidedTopUp }: AccountNotFoundProps) => {
       </div>
 
       <AddFundsDialog
+        cardLabel={card.label}
         onOpenChange={setAddFundsOpen}
         onSelect={chooseMethod}
         open={addFundsOpen}

@@ -29,7 +29,7 @@ const FundsSectionLayout = ({
       <div className='flex items-center gap-2'>
         {/* Arrows point the way the funds move: in on deposit, out on withdraw. */}
         <Button className='py-2' variant='primary' icon={ArrowCircleDownIcon} onClick={handleOpenDeposit}>
-          Deposit
+          Add funds
         </Button>
         {handleOpenWithdraw ? (
           <Button className='py-2' variant='ghost' icon={ArrowCircleUpIcon} onClick={handleOpenWithdraw}>

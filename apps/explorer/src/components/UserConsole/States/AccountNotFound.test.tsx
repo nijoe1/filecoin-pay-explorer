@@ -4,8 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 import AccountNotFound from "./AccountNotFound";
 
 const launch = vi.hoisted(() => ({ openUsdcFunding: vi.fn() }));
+const card = vi.hoisted(() => ({ buyWithCard: vi.fn(), label: "Buy USDC with card" }));
 
 vi.mock("../FundingLaunchContext", () => ({ useFundingLaunch: () => launch }));
+vi.mock("wagmi", () => ({ useConnection: () => ({ address: "0x1111111111111111111111111111111111111111" }) }));
+vi.mock("../FundsSection/hooks/useCardPurchase", () => ({ useCardPurchase: () => card }));
 vi.mock("../DepositDialog", () => ({
   DepositDialog: ({ open }: { open: boolean }) => (open ? <div data-deposit-dialog /> : null),
 }));
@@ -18,7 +21,7 @@ vi.mock("../FundsSection/components", () => ({
     open,
     squidAvailable,
   }: {
-    onSelect: (method: "deposit" | "squid" | "usdc") => void;
+    onSelect: (method: "card" | "deposit" | "squid" | "usdc") => void;
     open: boolean;
     squidAvailable: boolean;
   }) =>
@@ -27,6 +30,7 @@ vi.mock("../FundsSection/components", () => ({
         <button aria-label='Choose deposit' onClick={() => onSelect("deposit")} type='button' />
         <button aria-label='Choose USDC funding' onClick={() => onSelect("usdc")} type='button' />
         <button aria-label='Choose Squid funding' onClick={() => onSelect("squid")} type='button' />
+        <button aria-label='Choose card' onClick={() => onSelect("card")} type='button' />
       </div>
     ) : null,
 }));
@@ -73,6 +77,10 @@ describe("AccountNotFound", () => {
     await act(async () => buttonNamed(renderer, "Add funds").props.onClick());
     await act(async () => renderer.root.findByProps({ "aria-label": "Choose Squid funding" }).props.onClick());
     expect(onGuidedTopUp).toHaveBeenCalledOnce();
+
+    await act(async () => buttonNamed(renderer, "Add funds").props.onClick());
+    await act(async () => renderer.root.findByProps({ "aria-label": "Choose card" }).props.onClick());
+    expect(card.buyWithCard).toHaveBeenCalledOnce();
 
     await act(async () => buttonNamed(renderer, "Add funds").props.onClick());
     await act(async () => renderer.root.findByProps({ "aria-label": "Choose deposit" }).props.onClick());

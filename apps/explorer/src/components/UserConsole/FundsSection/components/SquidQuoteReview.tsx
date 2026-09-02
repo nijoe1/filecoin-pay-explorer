@@ -860,7 +860,7 @@ export function SquidQuoteReview({
                 Acquiring USDFC…
               </span>
             ) : (
-              "Acquire USDFC"
+              "Swap to USDFC"
             )}
           </Button>
         </div>

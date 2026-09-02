@@ -29,7 +29,7 @@ export function TopUpWalletPanel({
       <span className='text-muted-foreground'>
         {showEmptyWalletHint
           ? `${payerLabel[0].toUpperCase()}${payerLabel.slice(1)} holds no ${tokenSymbol} on ${sourceNetworkName} yet.`
-          : `Top up ${payerLabel}.`}
+          : `Add USDC to ${payerLabel}.`}
       </span>
       <span className='flex flex-wrap gap-2'>
         <Button

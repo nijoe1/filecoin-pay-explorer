@@ -249,7 +249,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className='max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-[520px]'>
         <DialogHeader>
-          <DialogTitle>Fund with USDC</DialogTitle>
+          <DialogTitle>Pay with USDC</DialogTitle>
           <DialogDescription>
             Pay USDC from any connected wallet. It is swapped to USDFC via{" "}
             <ExternalTextLink href='https://app.squidrouter.com/'>Squid</ExternalTextLink> and deposited into your
@@ -396,7 +396,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
           </Button>
           {!pendingDeposit && (
             <Button
-              aria-label='Fund with USDC'
+              aria-label='Pay with USDC'
               disabled={!canConfirm}
               onClick={() => void handleConfirm()}
               type='button'
@@ -408,7 +408,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                   Funding…
                 </span>
               ) : (
-                "Fund with USDC"
+                "Pay with USDC"
               )}
             </Button>
           )}

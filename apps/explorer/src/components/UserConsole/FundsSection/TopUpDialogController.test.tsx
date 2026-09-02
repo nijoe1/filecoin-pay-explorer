@@ -169,8 +169,8 @@ describe("TopUpDialogController recovery", () => {
     act(() => dialog.onOpenChange?.(false));
     expect(dialog.open).toBe(false);
 
-    const launcher = renderer.root.findByProps({ "aria-label": "View top-up in progress" });
-    expect(JSON.stringify(renderer.toJSON())).toContain("Top-up in progress — view");
+    const launcher = renderer.root.findByProps({ "aria-label": "View swap in progress" });
+    expect(JSON.stringify(renderer.toJSON())).toContain("Swap in progress — view");
     expect(dialog.open).toBe(false);
 
     act(() => launcher.props.onClick());

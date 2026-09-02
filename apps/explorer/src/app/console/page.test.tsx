@@ -54,7 +54,7 @@ vi.mock("@/components/UserConsole/States", () => ({
       Account not found
       {onGuidedTopUp ? (
         <button data-open-top-up onClick={onGuidedTopUp} type='button'>
-          Fund with another token
+          Swap another token
         </button>
       ) : null}
     </div>
@@ -167,7 +167,7 @@ describe("UserConsole", () => {
 
     expect(markup).toContain("Unsupported network");
     expect(markup).toContain('data-top-up-account-id="0x1111111111111111111111111111111111111111"');
-    expect(markup).not.toContain("Fund with another token");
+    expect(markup).not.toContain("Swap another token");
     expect(markup).not.toContain("Funds");
     expect(markup).not.toContain("Filecoin balance");
     expect(markup).not.toContain("Approvals");
@@ -206,7 +206,7 @@ describe("UserConsole", () => {
     const filecoinMarkup = renderToStaticMarkup(<UserConsole />);
 
     expect(filecoinMarkup).toContain("Account not found");
-    expect(filecoinMarkup).toContain("Fund with another token");
+    expect(filecoinMarkup).toContain("Swap another token");
   });
 
   it("keeps one open controller and Filecoin mainnet data mounted across a Squid network switch", () => {

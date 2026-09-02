@@ -6,7 +6,7 @@ import { FundWithUsdcDialog } from "./components";
 import { isUsdcFundingAvailable } from "./data/usdc-funding-availability";
 
 /**
- * The single place the "Fund with USDC" dialog is rendered. It lives in the
+ * The single place the "Pay with USDC" dialog is rendered. It lives in the
  * console layout so the wallet menu can open it from any console page, and
  * it keys on the address so a change of identity starts the dialog fresh.
  */

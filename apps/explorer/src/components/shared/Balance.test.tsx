@@ -4,18 +4,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import Balance from "./Balance";
 
 const ADDRESS = "0x1111111111111111111111111111111111111111";
-const BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
 
 const privy = vi.hoisted(() => ({
   authenticated: false,
   connectWallet: vi.fn(),
   exportWallet: vi.fn(),
-  fundWithCard: vi.fn(async () => undefined),
-  login: vi.fn(),
   logout: vi.fn(),
-  onLoginComplete: undefined as (() => void) | undefined,
 }));
 const funding = vi.hoisted(() => ({ openUsdcFunding: vi.fn() }));
+const card = vi.hoisted(() => ({ buyWithCard: vi.fn(), label: "Log in to buy with card" }));
 const wallet = vi.hoisted(() => ({ chainId: 314 }));
 
 vi.mock("wagmi", () => ({
@@ -28,18 +25,13 @@ vi.mock("wagmi", () => ({
 vi.mock("@privy-io/react-auth", () => ({
   useConnectWallet: () => ({ connectWallet: privy.connectWallet }),
   useExportWallet: () => ({ exportWallet: privy.exportWallet }),
-  useFiatOnramp: () => ({ fund: privy.fundWithCard }),
-  useLogin: ({ onComplete }: { onComplete: () => void }) => {
-    privy.onLoginComplete = onComplete;
-    return { login: privy.login };
-  },
   usePrivy: () => ({ authenticated: privy.authenticated, logout: privy.logout }),
 }));
-vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 vi.mock("@/hooks/useSynapse", () => ({
   default: () => ({ constants: { contracts: { usdfc: "0x2222222222222222222222222222222222222222" }, faucets: [] } }),
 }));
 vi.mock("@/components/UserConsole/FundingLaunchContext", () => ({ useFundingLaunch: () => funding }));
+vi.mock("@/components/UserConsole/FundsSection/hooks/useCardPurchase", () => ({ useCardPurchase: () => card }));
 vi.mock("@/components/UserConsole/TransactionReview", () => ({
   isReviewEnabled: () => false,
   setReviewEnabled: vi.fn(),
@@ -66,72 +58,37 @@ const menuItem = (renderer: ReturnType<typeof create>, label: string) =>
     (node) => node.type === "button" && node.findAllByType("span").some((span) => span.props.children === label),
   );
 
+async function render() {
+  let renderer!: ReturnType<typeof create>;
+  await act(async () => {
+    renderer = create(<Balance />);
+  });
+  return renderer;
+}
+
 beforeEach(() => {
-  privy.authenticated = false;
-  privy.onLoginComplete = undefined;
   wallet.chainId = 314;
 });
 
-describe("Balance USDC funding", () => {
-  it("opens the shared USDC dialog from the menu on mainnet and hides it on calibration", async () => {
-    let renderer!: ReturnType<typeof create>;
+describe("Balance funding menu", () => {
+  it("opens the shared USDC payment from Add funds and buys with card through the shared hook", async () => {
+    const renderer = await render();
     await act(async () => {
-      renderer = create(<Balance />);
-    });
-    await act(async () => {
-      menuItem(renderer, "Fund with USDC").props.onClick();
+      menuItem(renderer, "Add funds").props.onClick();
     });
     expect(funding.openUsdcFunding).toHaveBeenCalledOnce();
-    await act(async () => renderer.unmount());
-
-    wallet.chainId = 314159;
-    await act(async () => {
-      renderer = create(<Balance />);
-    });
-    expect(() => menuItem(renderer, "Fund with USDC")).toThrow();
-    await act(async () => renderer.unmount());
-  });
-});
-
-describe("Balance card purchases", () => {
-  it("asks a connect-only wallet to log in, then continues the card purchase", async () => {
-    let renderer!: ReturnType<typeof create>;
-    await act(async () => {
-      renderer = create(<Balance />);
-    });
 
     await act(async () => {
       menuItem(renderer, "Log in to buy with card").props.onClick();
     });
-    expect(privy.login).toHaveBeenCalledOnce();
-    expect(privy.fundWithCard).not.toHaveBeenCalled();
-
-    await act(async () => {
-      privy.onLoginComplete?.();
-    });
-    expect(privy.fundWithCard).toHaveBeenCalledWith({
-      source: {},
-      destination: { address: ADDRESS, chain: "eip155:8453", asset: BASE_USDC },
-      environment: "production",
-    });
-    expect(funding.openUsdcFunding).toHaveBeenCalledOnce();
-
+    expect(card.buyWithCard).toHaveBeenCalledOnce();
     await act(async () => renderer.unmount());
   });
 
-  it("buys with card directly once logged in", async () => {
-    privy.authenticated = true;
-    let renderer!: ReturnType<typeof create>;
-    await act(async () => {
-      renderer = create(<Balance />);
-    });
-
-    await act(async () => {
-      menuItem(renderer, "Buy USDC with card").props.onClick();
-    });
-    expect(privy.login).not.toHaveBeenCalled();
-    expect(privy.fundWithCard).toHaveBeenCalledOnce();
-
+  it("hides Add funds where USDC funding cannot deposit", async () => {
+    wallet.chainId = 314159;
+    const renderer = await render();
+    expect(() => menuItem(renderer, "Add funds")).toThrow();
     await act(async () => renderer.unmount());
   });
 });

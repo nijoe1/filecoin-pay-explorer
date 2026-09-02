@@ -121,7 +121,7 @@ describe("FundWithUsdcDialog", () => {
     });
     expect(privy.connectWallet).toHaveBeenCalledOnce();
 
-    expect(renderer.root.findByProps({ "aria-label": "Fund with USDC" }).props.disabled).toBe(true);
+    expect(renderer.root.findByProps({ "aria-label": "Pay with USDC" }).props.disabled).toBe(true);
     // The embedded wallet is the default payer, so Privy's USDC funding is offered.
     expect(renderer.root.findAllByProps({ "aria-label": "Add USDC with Privy" }, { deep: false })).toHaveLength(1);
     await act(async () => {
