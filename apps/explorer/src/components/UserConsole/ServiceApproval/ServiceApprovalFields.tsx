@@ -53,6 +53,7 @@ function SuggestionInput<T>({
 
   return (
     <div className='relative' ref={ref}>
+      {/* The list opens on a click, a keystroke or ArrowDown, not on the focus a dialog gives its first field. */}
       <Input
         className={suggestions.length > 0 ? "pr-10" : undefined}
         disabled={disabled}
@@ -61,7 +62,14 @@ function SuggestionInput<T>({
           onChange(next);
           setOpen(true);
         }}
-        onFocus={() => setOpen(true)}
+        onClick={() => setOpen(true)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown") setOpen(true);
+          if (event.key === "Escape" && isOpen) {
+            event.stopPropagation();
+            setOpen(false);
+          }
+        }}
         placeholder={placeholder}
         value={value}
       />

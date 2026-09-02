@@ -31,14 +31,18 @@ vi.mock("@filecoin-foundation/ui-filecoin/Input", () => ({
     disabled,
     id,
     onChange,
+    onClick,
     onFocus,
+    onKeyDown,
     placeholder,
     value,
   }: {
     disabled?: boolean;
     id: string;
     onChange: (value: string) => void;
+    onClick?: () => void;
     onFocus?: () => void;
+    onKeyDown?: (event: { key: string; stopPropagation: () => void }) => void;
     placeholder: string;
     value: string;
   }) => (
@@ -46,7 +50,9 @@ vi.mock("@filecoin-foundation/ui-filecoin/Input", () => ({
       data-set={onChange}
       disabled={disabled}
       id={id}
+      onClick={onClick}
       onFocus={onFocus}
+      onKeyDown={onKeyDown}
       placeholder={placeholder}
       readOnly
       value={value}
@@ -91,6 +97,8 @@ const flatten = (node: unknown): string =>
         ? flatten((node as { children: unknown }).children)
         : "";
 const text = (renderer: ReturnType<typeof create>) => flatten(renderer.toJSON());
+const suggestionRows = (renderer: ReturnType<typeof create>) =>
+  renderer.root.findAll((node) => node.type === "button" && node.props["aria-label"] === undefined);
 
 // The suggestion list closes on a click outside, which needs a document to listen on.
 beforeEach(() => {
@@ -114,9 +122,13 @@ describe("service approval fields", () => {
     const renderer = await render();
     expect(renderer.root.findAllByProps({ "aria-label": "Show suggestions" }, { deep: false })).toHaveLength(2);
 
+    // Focus alone, which a dialog gives its first field on open, shows no list; a click does.
+    expect(input(renderer, "service-approval-service").props.onFocus).toBeUndefined();
+    expect(suggestionRows(renderer)).toHaveLength(0);
     await act(async () => {
-      input(renderer, "service-approval-service").props.onFocus();
+      input(renderer, "service-approval-service").props.onClick();
     });
+    expect(suggestionRows(renderer)).toHaveLength(1);
     const pick = renderer.root.find(
       (node) =>
         node.type === "button" && node.findAllByType("span").some((span) => span.props.children === "0x1111...1111"),
@@ -137,6 +149,26 @@ describe("service approval fields", () => {
     });
     expect(text(renderer)).toContain("Token loaded");
     expect(text(renderer)).toContain("USD for Filecoin Community");
+  });
+
+  it("opens the list on ArrowDown and closes it on Escape without closing the dialog", async () => {
+    const renderer = await render();
+    const stopPropagation = vi.fn();
+    await act(async () => {
+      input(renderer, "service-approval-token").props.onKeyDown({ key: "ArrowDown", stopPropagation });
+    });
+    expect(suggestionRows(renderer)).toHaveLength(1);
+    expect(stopPropagation).not.toHaveBeenCalled();
+    await act(async () => {
+      input(renderer, "service-approval-token").props.onKeyDown({ key: "Escape", stopPropagation });
+    });
+    expect(suggestionRows(renderer)).toHaveLength(0);
+    expect(stopPropagation).toHaveBeenCalledOnce();
+    // With no list open, Escape is left to the dialog.
+    await act(async () => {
+      input(renderer, "service-approval-token").props.onKeyDown({ key: "Escape", stopPropagation });
+    });
+    expect(stopPropagation).toHaveBeenCalledOnce();
   });
 
   it("locks the allowance inputs behind the unlimited toggle", async () => {
