@@ -169,12 +169,11 @@ const Balance = () => {
           <Coins />
           <span className='text-base text-zinc-950'>Fund with USDC</span>
         </DropdownMenuItem>
-        {isEmbeddedSigner ? (
-          <DropdownMenuItem onClick={() => void buyUsdcWithCard()} className='cursor-pointer py-2'>
-            <CreditCard />
-            <span className='text-base text-zinc-950'>Buy USDC with card</span>
-          </DropdownMenuItem>
-        ) : null}
+        {/* Privy's card onramp delivers to any address, so external wallets get it too. */}
+        <DropdownMenuItem onClick={() => void buyUsdcWithCard()} className='cursor-pointer py-2'>
+          <CreditCard />
+          <span className='text-base text-zinc-950'>Buy USDC with card</span>
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => connectWallet()} className='cursor-pointer py-2'>
           <PlugZap />
           <span className='text-base text-zinc-950'>Connect another wallet</span>

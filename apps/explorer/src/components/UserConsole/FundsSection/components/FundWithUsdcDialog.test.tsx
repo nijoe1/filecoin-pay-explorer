@@ -31,6 +31,7 @@ vi.mock("@privy-io/react-auth", () => ({
   useAddFunds: () => ({ addFunds: privy.addFunds }),
   useConnectWallet: () => ({ connectWallet: privy.connectWallet }),
   useFiatOnramp: () => ({ fund: privy.fundWithCard }),
+  usePrivy: () => ({ authenticated: true }),
   useFundWallet: () => ({ fundWallet: privy.fundWallet }),
   useWallets: () => ({ ready: true, wallets: privy.wallets }),
 }));

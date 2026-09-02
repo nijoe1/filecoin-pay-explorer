@@ -19,6 +19,7 @@ import {
   useConnectWallet,
   useFiatOnramp,
   useFundWallet,
+  usePrivy,
   useWallets,
 } from "@privy-io/react-auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -136,6 +137,8 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   const { connectWallet } = useConnectWallet();
   const { addFunds } = useAddFunds();
   const { fund: fundWithCard } = useFiatOnramp();
+  // Privy's unified transfer picker refuses users without a Privy login; the card onramp does not.
+  const { authenticated: hasPrivyLogin } = usePrivy();
   const { fundWallet } = useFundWallet();
   const { setTopUpActive } = useTopUpActivity();
   const { requestReview, reviewDialog } = useTransactionReview();
@@ -475,7 +478,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     }
   };
 
-  /** Privy's card onramp (Stripe, MoonPay, or Meld by region) into the embedded wallet. */
+  /** Privy's card onramp (Stripe, MoonPay, or Meld by region) into the paying wallet. */
   const buyUsdcWithCard = () => {
     if (!payingWallet || !sourceToken) return;
     return runPrivyFunding(
@@ -493,7 +496,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     );
   };
 
-  /** Privy's unified funding modal: exchange or a transfer from another wallet. */
+  /** Privy's unified funding modal: exchange or a transfer from another wallet. Needs a Privy login. */
   const transferUsdcToPrivyWallet = () => {
     if (!payingWallet || !sourceToken) return;
     return runPrivyFunding(
@@ -533,8 +536,8 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   const gasTopUpAmount = Math.max(Number(formatUnits(gasShortfall, 18)) * 2, Number(MINIMUM_GAS_TOP_UP)).toFixed(4);
   const explorerUrl = sourceChain?.blockExplorers?.default.url;
   const activeStage = stage ?? (pending ? "bridging" : null);
-  const showEmptyPrivyWalletHint =
-    isEmbedded && balances !== undefined && balances.token === 0n && parsedAmount === null && !isBusy;
+  const showEmptyWalletHint = balances !== undefined && balances.token === 0n && parsedAmount === null && !isBusy;
+  const payerLabel = isEmbedded ? "your Privy wallet" : "this wallet";
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -716,12 +719,12 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                 )}
               </div>
 
-              {isEmbedded && sourceToken && (
+              {payingWallet && sourceToken && (
                 <div className='flex flex-wrap items-center justify-between gap-2 rounded-md border p-3'>
                   <span className='text-muted-foreground'>
-                    {showEmptyPrivyWalletHint
-                      ? `Your Privy wallet holds no ${sourceToken.symbol} on ${sourceChain?.name ?? "this network"} yet.`
-                      : "Top up your Privy wallet."}
+                    {showEmptyWalletHint
+                      ? `${payerLabel[0].toUpperCase()}${payerLabel.slice(1)} holds no ${sourceToken.symbol} on ${sourceChain?.name ?? "this network"} yet.`
+                      : `Top up ${payerLabel}.`}
                   </span>
                   <span className='flex flex-wrap gap-2'>
                     <Button
@@ -734,16 +737,18 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                     >
                       Buy with card
                     </Button>
-                    <Button
-                      aria-label='Add USDC with Privy'
-                      disabled={isBusy}
-                      onClick={() => void transferUsdcToPrivyWallet()}
-                      size='compact'
-                      type='button'
-                      variant='tertiary'
-                    >
-                      Transfer
-                    </Button>
+                    {hasPrivyLogin && (
+                      <Button
+                        aria-label='Add USDC with Privy'
+                        disabled={isBusy}
+                        onClick={() => void transferUsdcToPrivyWallet()}
+                        size='compact'
+                        type='button'
+                        variant='tertiary'
+                      >
+                        Transfer
+                      </Button>
+                    )}
                   </span>
                 </div>
               )}
@@ -796,18 +801,16 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                     Needs about {formatTokenAmount(requiredNative ?? 0n, 18)} {nativeSymbol} on {sourceChain.name} for
                     gas and fees.
                   </span>
-                  {isEmbedded && (
-                    <Button
-                      aria-label='Add gas with Privy'
-                      disabled={isBusy}
-                      onClick={() => void addGasToPrivyWallet()}
-                      size='compact'
-                      type='button'
-                      variant='tertiary'
-                    >
-                      Add {gasTopUpAmount} {nativeSymbol}
-                    </Button>
-                  )}
+                  <Button
+                    aria-label='Add gas with Privy'
+                    disabled={isBusy}
+                    onClick={() => void addGasToPrivyWallet()}
+                    size='compact'
+                    type='button'
+                    variant='tertiary'
+                  >
+                    Add {gasTopUpAmount} {nativeSymbol}
+                  </Button>
                 </div>
               )}
 
