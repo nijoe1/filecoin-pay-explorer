@@ -67,8 +67,6 @@ import {
 import { walletErrorMessage } from "../data/squid-execution";
 import { squidFetch } from "../data/squid-quote";
 
-export { isPrivyEmbeddedWallet };
-
 const QUOTE_DEBOUNCE_MS = 500;
 // Base has the cheapest gas among the Squid source networks and is where
 // Privy's funding flows deliver USDC.
@@ -134,8 +132,6 @@ export function parseUsdcAmount(amount: string, decimals: number): bigint | null
     return null;
   }
 }
-
-export { isFundingExit };
 
 function pickDefaultWallet(wallets: readonly ConnectedWallet[]): ConnectedWallet | undefined {
   return wallets.find(isPrivyEmbeddedWallet) ?? wallets[0];
@@ -291,6 +287,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     try {
       setPending(recipient ? loadPendingSquidDeposit(window.localStorage, recipient) : null);
     } catch {
+      // Storage can be unavailable (private mode, blocked site data); then there is nothing to resume.
       setPending(null);
     }
   }, [open, recipient, setTopUpActive]);
@@ -474,6 +471,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
           try {
             setPending(savePendingSquidDeposit(window.localStorage, pendingDeposit));
           } catch {
+            // Storage is best effort; the deposit is still tracked in memory for this session.
             setPending(pendingDeposit);
           }
         },

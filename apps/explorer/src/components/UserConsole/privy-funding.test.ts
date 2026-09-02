@@ -29,10 +29,24 @@ describe("privy funding helpers", () => {
     expect(toCaipChainId(314)).toBe("eip155:314");
   });
 
-  it("treats a closed Privy modal as an exit rather than an error", () => {
-    expect(isFundingExit(new Error("User exited the funding flow"))).toBe(true);
+  it("treats only the user leaving a Privy modal as an exit", () => {
+    const samples = {
+      "User exited flow": true,
+      "User exited the modal before submitting the transaction": true,
+      sdk_deposit_address_exited: true,
+      "Verification canceled": true,
+      cancelled: true,
+      "User rejected the request.": true,
+      "Funding is not enabled for this app": false,
+      "Connection closed": false,
+      "Request cancelled by the network": false,
+      "Failed to exit the vault": false,
+    };
+    expect(Object.fromEntries(Object.entries(samples).map(([m, _]) => [m, isFundingExit(new Error(m))]))).toEqual(
+      samples,
+    );
     expect(isFundingExit(undefined)).toBe(true);
-    expect(isFundingExit(new Error("Funding is not enabled for this app"))).toBe(false);
+    expect(isFundingExit(Object.assign(new Error("Something else"), { code: 4001 }))).toBe(true);
   });
 
   it("reads the sandbox flag from the environment", () => {

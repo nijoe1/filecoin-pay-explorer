@@ -11,10 +11,22 @@ export function toCaipChainId(chainId: number): `eip155:${number}` {
   return `eip155:${chainId}`;
 }
 
-/** Privy rejects its funding promise when the user simply closes the modal. */
+/**
+ * The messages Privy rejects with when the user leaves a funding modal:
+ * "User exited flow", "User exited the modal before submitting the
+ * transaction", "sdk_deposit_address_exited", "Verification canceled",
+ * "cancelled", "User rejected the request." Anything else is a real failure.
+ */
+const FUNDING_EXIT_MESSAGES = [/^user exited\b/i, /_exited$/i, /\bcancell?ed$/i, /^user rejected\b/i];
+const USER_REJECTED_REQUEST_CODE = 4001;
+
+/** Whether a rejected Privy funding promise only means the user closed the modal. */
 export function isFundingExit(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  return message === "" || /exit|clos|cancel|dismiss/i.test(message);
+  if (typeof error === "object" && error !== null && "code" in error && error.code === USER_REJECTED_REQUEST_CODE) {
+    return true;
+  }
+  const message = (error instanceof Error ? error.message : typeof error === "string" ? error : "").trim();
+  return message === "" || FUNDING_EXIT_MESSAGES.some((pattern) => pattern.test(message));
 }
 
 export function isSandboxFlag(value: string | undefined): boolean {

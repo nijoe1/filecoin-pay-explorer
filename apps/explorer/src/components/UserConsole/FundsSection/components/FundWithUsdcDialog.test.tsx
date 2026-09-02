@@ -5,8 +5,6 @@ import {
   describeStage,
   describeWallet,
   FundWithUsdcDialog,
-  isFundingExit,
-  isPrivyEmbeddedWallet,
   parseUsdcAmount,
   parseWalletChainId,
 } from "./FundWithUsdcDialog";
@@ -118,8 +116,6 @@ describe("wallet helpers", () => {
     expect(describeWallet({ address: EXTERNAL, walletClientType: "coinbase_wallet" })).toBe(
       "Coinbase Wallet (0x3333...3333)",
     );
-    expect(isPrivyEmbeddedWallet({ walletClientType: "privy" })).toBe(true);
-    expect(isPrivyEmbeddedWallet({ walletClientType: "metamask" })).toBe(false);
   });
 
   it("parses CAIP-2 chain ids and USDC amounts", () => {
@@ -155,12 +151,6 @@ describe("wallet helpers", () => {
     expect(describeStage("swap-requested", { hasApproved: false, isEmbedded: false })).toBe(
       "Confirm the swap in your wallet",
     );
-  });
-
-  it("treats a closed Privy funding modal as an exit rather than an error", () => {
-    expect(isFundingExit(new Error("User exited the funding flow"))).toBe(true);
-    expect(isFundingExit(undefined)).toBe(true);
-    expect(isFundingExit(new Error("Funding is not enabled for this app"))).toBe(false);
   });
 });
 

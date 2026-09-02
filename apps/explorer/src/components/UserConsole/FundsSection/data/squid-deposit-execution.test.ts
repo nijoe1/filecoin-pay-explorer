@@ -163,6 +163,47 @@ describe("awaitSquidDepositSettlement", () => {
     await expect(attempt).rejects.toThrow(message);
   });
 
+  it("tolerates a single failed status request", async () => {
+    const responses = [statusResponse(null, 500), statusResponse("success")];
+    const fetch = vi.fn(async () => responses.shift() as Response);
+    const result = await awaitSquidDepositSettlement({
+      destinationClient: fakeDestination([192n]),
+      fundsBefore: 100n,
+      quoteId: "quote-1",
+      sleep: noSleep,
+      sourceChainId: 8453,
+      squid: { integratorId: "id", fetch },
+      target,
+      transactionHash: ROUTE_HASH,
+    });
+    expect(result).toEqual({ transactionHash: ROUTE_HASH, fundsBefore: 100n, fundsAfter: 192n, depositedAmount: 92n });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a status service outage after repeated failures without dropping the hash", async () => {
+    const fetch = vi.fn(async () => statusResponse(null, 500));
+    const attempt = awaitSquidDepositSettlement({
+      destinationClient: fakeDestination([100n]),
+      fundsBefore: 100n,
+      maxStatusFailures: 3,
+      quoteId: "quote-1",
+      sleep: noSleep,
+      sourceChainId: 8453,
+      squid: { integratorId: "id", fetch },
+      target,
+      transactionHash: ROUTE_HASH,
+    });
+    await expect(attempt).rejects.toMatchObject({
+      name: "SquidDepositError",
+      reason: "timeout",
+      transactionHash: ROUTE_HASH,
+    });
+    await expect(attempt).rejects.toThrow(
+      "Squid's status service is not answering (Squid status request failed (500)). Keep this page open or check back later.",
+    );
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
   it("times out while keeping the transaction hash for a later resume", async () => {
     const fetch = vi.fn(async () => statusResponse(null, 404));
     await expect(

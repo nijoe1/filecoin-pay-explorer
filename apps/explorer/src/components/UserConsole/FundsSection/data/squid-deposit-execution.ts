@@ -47,6 +47,8 @@ interface PollingOptions {
   pollIntervalMs?: number;
   /** Squid status polls before giving up; the route itself is quoted at ~90s. */
   maxStatusAttempts?: number;
+  /** Consecutive failed status requests tolerated before the outage is reported. */
+  maxStatusFailures?: number;
   /** Filecoin balance reads after Squid reports success. */
   maxVerifyAttempts?: number;
 }
@@ -122,6 +124,7 @@ export async function awaitSquidDepositSettlement({
   destinationClient,
   fundsBefore,
   maxStatusAttempts = 90,
+  maxStatusFailures = 6,
   maxVerifyAttempts = 12,
   onStage,
   pollIntervalMs = 10_000,
@@ -135,10 +138,24 @@ export async function awaitSquidDepositSettlement({
   if (sourceChainId !== FILECOIN_CHAIN_ID) {
     onStage?.("bridging", transactionHash);
     let status: SquidDepositStatus = "pending";
+    let consecutiveFailures = 0;
     for (let attempt = 0; attempt < maxStatusAttempts && status === "pending"; attempt += 1) {
-      status = await fetchSquidDepositStatus({ transactionHash, sourceChainId, quoteId }, squid).catch(
-        (): SquidDepositStatus => "pending",
-      );
+      try {
+        status = await fetchSquidDepositStatus({ transactionHash, sourceChainId, quoteId }, squid);
+        consecutiveFailures = 0;
+      } catch (statusError) {
+        // One failed status request is noise; a run of them is an outage the user should hear about.
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= maxStatusFailures) {
+          const detail = statusError instanceof Error ? statusError.message : "unknown error";
+          throw new SquidDepositError(
+            `Squid's status service is not answering (${detail}). Keep this page open or check back later.`,
+            "timeout",
+            transactionHash,
+          );
+        }
+        status = "pending";
+      }
       if (status === "pending") await sleep(pollIntervalMs);
     }
     if (status === "pending") {
