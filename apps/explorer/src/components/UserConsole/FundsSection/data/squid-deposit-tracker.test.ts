@@ -1,11 +1,13 @@
 import type { Hash } from "viem";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearPendingSquidDeposit,
   getPendingSquidDepositKey,
   loadPendingSquidDeposit,
+  PENDING_SQUID_DEPOSIT_EVENT,
   type PendingSquidDeposit,
   savePendingSquidDeposit,
+  subscribeToPendingSquidDeposit,
 } from "./squid-deposit-tracker";
 
 const RECIPIENT = "0x2222222222222222222222222222222222222222";
@@ -38,6 +40,10 @@ describe("pending Squid deposit tracker", () => {
     storage = memoryStorage();
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("round-trips a pending deposit keyed by the recipient", () => {
     savePendingSquidDeposit(storage, pending);
     expect(storage.items.has(getPendingSquidDepositKey(RECIPIENT))).toBe(true);
@@ -55,5 +61,50 @@ describe("pending Squid deposit tracker", () => {
 
     savePendingSquidDeposit(storage, pending);
     expect(loadPendingSquidDeposit(storage, "0x9999999999999999999999999999999999999999")).toBeNull();
+  });
+
+  it("keeps the paid token's symbol and decimals when they were recorded", () => {
+    savePendingSquidDeposit(storage, { ...pending, sourceSymbol: "USDC", sourceDecimals: 6 });
+    expect(loadPendingSquidDeposit(storage, RECIPIENT)).toEqual({
+      ...pending,
+      sourceSymbol: "USDC",
+      sourceDecimals: 6,
+    });
+
+    const stored = JSON.parse(storage.getItem(getPendingSquidDepositKey(RECIPIENT)) ?? "{}") as Record<string, unknown>;
+    storage.setItem(getPendingSquidDepositKey(RECIPIENT), JSON.stringify({ ...stored, sourceDecimals: "6" }));
+    expect(loadPendingSquidDeposit(storage, RECIPIENT)).toBeNull();
+  });
+
+  it("announces saves and clears in this tab and relays changes from any tab", () => {
+    const listeners: Record<string, (event?: unknown) => void> = {};
+    const dispatchEvent = vi.fn();
+    const removeEventListener = vi.fn();
+    vi.stubGlobal("window", {
+      addEventListener: vi.fn((type: string, listener: (event?: unknown) => void) => {
+        listeners[type] = listener;
+      }),
+      dispatchEvent,
+      removeEventListener,
+    });
+
+    savePendingSquidDeposit(storage, pending);
+    clearPendingSquidDeposit(storage, RECIPIENT);
+    expect(dispatchEvent.mock.calls.map(([event]) => (event as Event).type)).toEqual([
+      PENDING_SQUID_DEPOSIT_EVENT,
+      PENDING_SQUID_DEPOSIT_EVENT,
+    ]);
+
+    const onChange = vi.fn();
+    const unsubscribe = subscribeToPendingSquidDeposit(RECIPIENT, onChange);
+    listeners.storage?.({ key: "unrelated" });
+    expect(onChange).not.toHaveBeenCalled();
+    listeners.storage?.({ key: getPendingSquidDepositKey(RECIPIENT) });
+    listeners.storage?.({ key: null });
+    listeners[PENDING_SQUID_DEPOSIT_EVENT]?.();
+    expect(onChange).toHaveBeenCalledTimes(3);
+
+    unsubscribe();
+    expect(removeEventListener.mock.calls.map(([type]) => type)).toEqual(["storage", PENDING_SQUID_DEPOSIT_EVENT]);
   });
 });

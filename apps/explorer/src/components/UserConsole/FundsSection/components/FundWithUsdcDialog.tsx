@@ -464,6 +464,8 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
             quoteId: executable.quoteId,
             transactionHash: hash,
             sourceAmount: parsedAmount,
+            sourceSymbol: sourceToken.symbol,
+            sourceDecimals: sourceToken.decimals,
             minimumDestinationAmount: executable.minimumDestinationAmount,
             fundsBefore,
             startedAt: Date.now(),

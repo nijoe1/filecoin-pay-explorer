@@ -7,6 +7,7 @@ import { ConsoleHeader } from "@/components/UserConsole/ConsoleHeader";
 import { ConsoleNavDrawer } from "@/components/UserConsole/ConsoleNavDrawer";
 import ConsoleProviders from "@/components/UserConsole/ConsoleProviders";
 import { ConsoleSidebar } from "@/components/UserConsole/ConsoleSidebar";
+import { PendingDepositNotice } from "@/components/UserConsole/FundsSection/PendingDepositNotice";
 import { UsdcFundingHost } from "@/components/UserConsole/FundsSection/UsdcFundingHost";
 import { NotConnected, UnsupportedChain } from "@/components/UserConsole/States";
 import { useTopUpActivity } from "@/components/UserConsole/TopUpActivityContext";
@@ -50,6 +51,8 @@ const ConsoleShell = ({ children }: { children: ReactNode }) => {
           <div className='flex flex-col gap-6'>
             {/* BetaWarning sits above the row so it shows on every console page. */}
             <BetaWarning />
+            {/* An in-flight USDC deposit stays visible on every console page until it settles. */}
+            {displayAccessState === "ready" ? <PendingDepositNotice address={address} /> : null}
             <ConsoleAccessGate accessState={displayAccessState}>
               <ConsoleContent accessState={displayAccessState} sidebar={<ConsoleSidebar />}>
                 {children}
