@@ -28,6 +28,31 @@ describe("createConsoleWalletSelector", () => {
     expect(select({ wallets: [], user: null })).toBeUndefined();
   });
 
+  it("remembers a connect-only choice across reloads through storage", () => {
+    const items = new Map<string, string>();
+    const storage = () => ({
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => void items.set(key, value),
+    });
+    const firstSession = createConsoleWalletSelector({ storage });
+    expect(firstSession({ wallets: [metamask], user: null })).toBe(metamask);
+    expect(firstSession({ wallets: [coinbase, metamask], user: null })).toBe(metamask);
+
+    // A reload builds a fresh selector; the stored choice wins over wallet order.
+    const secondSession = createConsoleWalletSelector({ storage });
+    expect(secondSession({ wallets: [coinbase, metamask], user: null })).toBe(metamask);
+    expect([...items.entries()]).toEqual([["filecoin-pay:console-wallet:v1", metamask.address]]);
+  });
+
+  it("falls back to session memory when storage is unavailable", () => {
+    const storage = () => {
+      throw new Error("blocked");
+    };
+    const select = createConsoleWalletSelector({ storage });
+    expect(select({ wallets: [metamask], user: null })).toBe(metamask);
+    expect(select({ wallets: [coinbase, metamask], user: null })).toBe(metamask);
+  });
+
   it("recognises the embedded wallet by its client type", () => {
     expect(isPrivyEmbeddedWallet(embedded)).toBe(true);
     expect(isPrivyEmbeddedWallet(metamask)).toBe(false);

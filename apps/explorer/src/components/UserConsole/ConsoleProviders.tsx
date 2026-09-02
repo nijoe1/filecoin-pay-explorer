@@ -9,8 +9,9 @@ import { readOnrampEnvironment } from "./privy-funding";
 import { TopUpActivityProvider } from "./TopUpActivityContext";
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
-// Module-level so the selection survives re-renders; see createConsoleWalletSelector.
-const selectConsoleWallet = createConsoleWalletSelector();
+// Module-level so the selection survives re-renders, and stored so it survives
+// a reload; see createConsoleWalletSelector. Storage is read lazily, on the client.
+const selectConsoleWallet = createConsoleWalletSelector({ storage: () => window.localStorage });
 
 const ConsoleProviders = ({ children }: { children: React.ReactNode }) => {
   if (!PRIVY_APP_ID) {
