@@ -1,12 +1,20 @@
 "use client";
 
+import type { UserToken } from "@filecoin-pay/types";
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 
+type AddFundsOptions = {
+  /** The token a plain deposit should open on, when the caller is showing one. */
+  depositToken?: UserToken | null;
+};
+
 type FundingLaunch = {
-  /** Whether the console-wide add-funds picker is open. */
+  /** Whether the console-wide add-funds request is open (the picker, or the deposit where that is all there is). */
   isAddFundsOpen: boolean;
-  openAddFunds: () => void;
+  openAddFunds: (options?: AddFundsOptions) => void;
   closeAddFunds: () => void;
+  /** The token the latest add-funds request asked a deposit to open on. */
+  depositToken: UserToken | null;
   /** Whether the console-wide "Pay with USDC" dialog is open. */
   isUsdcFundingOpen: boolean;
   openUsdcFunding: () => void;
@@ -26,9 +34,13 @@ const FundingLaunchContext = createContext<FundingLaunch | null>(null);
  */
 export function FundingLaunchProvider({ children }: { children: ReactNode }) {
   const [isAddFundsOpen, setAddFundsOpen] = useState(false);
+  const [depositToken, setDepositToken] = useState<UserToken | null>(null);
   const [isUsdcFundingOpen, setUsdcFundingOpen] = useState(false);
   const [guidedTopUp, setGuidedTopUpState] = useState<(() => void) | null>(null);
-  const openAddFunds = useCallback(() => setAddFundsOpen(true), []);
+  const openAddFunds = useCallback((options?: AddFundsOptions) => {
+    setDepositToken(options?.depositToken ?? null);
+    setAddFundsOpen(true);
+  }, []);
   const closeAddFunds = useCallback(() => setAddFundsOpen(false), []);
   const openUsdcFunding = useCallback(() => setUsdcFundingOpen(true), []);
   const closeUsdcFunding = useCallback(() => setUsdcFundingOpen(false), []);
@@ -39,6 +51,7 @@ export function FundingLaunchProvider({ children }: { children: ReactNode }) {
       isAddFundsOpen,
       openAddFunds,
       closeAddFunds,
+      depositToken,
       isUsdcFundingOpen,
       openUsdcFunding,
       closeUsdcFunding,
@@ -49,6 +62,7 @@ export function FundingLaunchProvider({ children }: { children: ReactNode }) {
       isAddFundsOpen,
       openAddFunds,
       closeAddFunds,
+      depositToken,
       isUsdcFundingOpen,
       openUsdcFunding,
       closeUsdcFunding,

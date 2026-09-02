@@ -1,6 +1,9 @@
+import type { UserToken } from "@filecoin-pay/types";
 import { act, create } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 import { FundingLaunchProvider, useFundingLaunch } from "./FundingLaunchContext";
+
+const SEED = { id: "account-usdfc" } as unknown as UserToken;
 
 function Controls() {
   const launch = useFundingLaunch();
@@ -9,11 +12,13 @@ function Controls() {
       <span
         data-open={launch.isUsdcFundingOpen}
         data-picker-open={launch.isAddFundsOpen}
+        data-seed={launch.depositToken}
         data-swap={launch.guidedTopUp}
       />
       <button data-launch onClick={launch.openUsdcFunding} type='button' />
       <button data-close onClick={launch.closeUsdcFunding} type='button' />
-      <button data-open-picker onClick={launch.openAddFunds} type='button' />
+      <button data-open-picker onClick={() => launch.openAddFunds()} type='button' />
+      <button data-open-seeded onClick={() => launch.openAddFunds({ depositToken: SEED })} type='button' />
       <button data-close-picker onClick={launch.closeAddFunds} type='button' />
       <button data-register={launch.setGuidedTopUp} type='button' />
     </>
@@ -45,13 +50,18 @@ describe("FundingLaunchContext", () => {
     expect(flag(renderer, "data-open")).toBe(false);
   });
 
-  it("opens and closes the shared add-funds picker", () => {
+  it("opens and closes the shared add-funds request, remembering the token it named", () => {
     const renderer = render();
     expect(flag(renderer, "data-picker-open")).toBe(false);
-    press(renderer, "data-open-picker");
+    expect(flag(renderer, "data-seed")).toBeNull();
+    press(renderer, "data-open-seeded");
     expect(flag(renderer, "data-picker-open")).toBe(true);
+    expect(flag(renderer, "data-seed")).toBe(SEED);
     press(renderer, "data-close-picker");
     expect(flag(renderer, "data-picker-open")).toBe(false);
+    // A request without a token clears the previous one.
+    press(renderer, "data-open-picker");
+    expect(flag(renderer, "data-seed")).toBeNull();
   });
 
   it("keeps the guided swap opener while a dashboard registers one", () => {

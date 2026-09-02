@@ -20,9 +20,15 @@ vi.mock("@/hooks/useAccountDetails", () => ({
 }));
 vi.mock("./hooks/useCardPurchase", () => ({ useCardPurchase: () => card }));
 vi.mock("@/components/UserConsole/DepositDialog", () => ({
-  DepositDialog: ({ open, tokens }: { open: boolean; tokens: unknown[] }) => (
-    <div data-deposit-open={open} data-token-count={tokens.length} />
-  ),
+  DepositDialog: ({
+    depositToken,
+    open,
+    tokens,
+  }: {
+    depositToken: { id: string } | null;
+    open: boolean;
+    tokens: unknown[];
+  }) => <div data-deposit-open={open} data-seed={depositToken?.id ?? null} data-token-count={tokens.length} />,
 }));
 vi.mock("./components", () => ({
   AddFundsDialog: ({
@@ -61,7 +67,12 @@ function Launcher() {
   return (
     <>
       <button data-launch onClick={openUsdcFunding} type='button' />
-      <button data-open-picker onClick={openAddFunds} type='button' />
+      <button data-open-picker onClick={() => openAddFunds()} type='button' />
+      <button
+        data-open-seeded
+        onClick={() => openAddFunds({ depositToken: { id: "token-1" } as never })}
+        type='button'
+      />
       <button data-register={setGuidedTopUp} type='button' />
     </>
   );
@@ -125,6 +136,13 @@ describe("FundingHost", () => {
     act(() => dialogs.onSelect?.("deposit"));
     expect(find(renderer, "data-deposit-open").props["data-deposit-open"]).toBe(true);
     expect(find(renderer, "data-deposit-open").props["data-token-count"]).toBe(1);
+    expect(find(renderer, "data-deposit-open").props["data-seed"]).toBeNull();
+    act(() => find(renderer, "data-deposit-open").parent?.props.onOpenChange(false));
+
+    // The dashboard names the token it shows, and the deposit opens on it.
+    press(renderer, "data-open-seeded");
+    act(() => dialogs.onSelect?.("deposit"));
+    expect(find(renderer, "data-deposit-open").props["data-seed"]).toBe("token-1");
 
     act(() => dialogs.onSelect?.("squid"));
     expect(openSwap).toHaveBeenCalledOnce();

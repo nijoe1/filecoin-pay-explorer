@@ -66,8 +66,13 @@ function FundingDialogs({ address, chainId }: { address: string; chainId: number
           swapAvailable={launch.guidedTopUp !== null}
         />
       ) : null}
-      {/* No seeded token, so the deposit opens on its picker. */}
-      <DepositDialog onOpenChange={handleDepositOpenChange} open={showDeposit} tokens={tokens?.userTokens ?? []} />
+      {/* The deposit opens on the token the request named, else on its picker. */}
+      <DepositDialog
+        depositToken={launch.depositToken}
+        onOpenChange={handleDepositOpenChange}
+        open={showDeposit}
+        tokens={tokens?.userTokens ?? []}
+      />
       {canFundWithUsdc ? (
         <FundWithUsdcDialog
           accountId={accountId}

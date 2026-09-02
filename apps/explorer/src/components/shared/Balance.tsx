@@ -126,7 +126,7 @@ const Balance = () => {
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={openAddFunds} className='cursor-pointer py-2'>
+        <DropdownMenuItem onClick={() => openAddFunds()} className='cursor-pointer py-2'>
           <Coins />
           <span className='text-base'>Add funds</span>
         </DropdownMenuItem>

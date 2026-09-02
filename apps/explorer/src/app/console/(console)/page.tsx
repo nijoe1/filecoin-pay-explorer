@@ -24,7 +24,6 @@ type AccountSectionsProps = {
   error: Error | null;
   isLoading: boolean;
   network: Network;
-  onGuidedTopUp?: () => void;
   userAddress: string;
   /**
    * Rendered below the funds overview rather than above the page: the prompt to
@@ -35,15 +34,7 @@ type AccountSectionsProps = {
   alertsBanner: React.ReactNode;
 };
 
-const AccountSections = ({
-  account,
-  error,
-  isLoading,
-  network,
-  onGuidedTopUp,
-  userAddress,
-  alertsBanner,
-}: AccountSectionsProps) => {
+const AccountSections = ({ account, error, isLoading, network, userAddress, alertsBanner }: AccountSectionsProps) => {
   if (isLoading) {
     return (
       <>
@@ -56,11 +47,7 @@ const AccountSections = ({
   if (!account) {
     return (
       <>
-        {error ? (
-          <ErrorState error={error} />
-        ) : (
-          <AccountNotFound onGuidedTopUp={network === "mainnet" ? onGuidedTopUp : undefined} />
-        )}
+        {error ? <ErrorState error={error} /> : <AccountNotFound />}
         {alertsBanner}
       </>
     );
@@ -71,7 +58,7 @@ const AccountSections = ({
       <div className='flex flex-col gap-6'>
         {/* A failed background refetch still leaves the last good account on screen. */}
         {error ? <StaleDataNotice error={error} /> : null}
-        <FundsSection account={account} network={network} onGuidedTopUp={onGuidedTopUp} />
+        <FundsSection account={account} network={network} />
         {alertsBanner}
       </div>
       <RailsSection account={account} network={network} userAddress={userAddress} />
@@ -103,14 +90,13 @@ const UserConsole = () => {
     networkOverride: displayNetwork,
   });
 
-  const accountSections = (onGuidedTopUp?: () => void) =>
+  const accountSections = () =>
     address ? (
       <AccountSections
         account={accountQuery.data}
         error={accountQuery.error}
         isLoading={accountQuery.isLoading}
         network={displayNetwork}
-        onGuidedTopUp={onGuidedTopUp}
         userAddress={address}
         alertsBanner={showAlertsBanner ? <AlertsBanner /> : null}
       />
@@ -121,7 +107,7 @@ const UserConsole = () => {
       {/* The (console) layout gates on a connected wallet, so address is set here. */}
       {address && canMountTopUpController ? (
         <TopUpDialogController accountId={accountQuery.data?.id ?? address} key={address}>
-          {(openTopUp, isOpen) => (isSquidSourceChain && !isOpen ? <UnsupportedChain /> : accountSections(openTopUp))}
+          {(_openTopUp, isOpen) => (isSquidSourceChain && !isOpen ? <UnsupportedChain /> : accountSections())}
         </TopUpDialogController>
       ) : canLoadFilecoinConsole ? (
         accountSections()
