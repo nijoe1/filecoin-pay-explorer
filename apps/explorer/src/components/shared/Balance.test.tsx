@@ -8,12 +8,10 @@ const SHORT_ADDRESS = "0x1111...1111";
 
 const privy = vi.hoisted(() => ({
   authenticated: false,
-  connectWallet: vi.fn(),
   exportWallet: vi.fn(),
   logout: vi.fn(),
 }));
-const funding = vi.hoisted(() => ({ openUsdcFunding: vi.fn() }));
-const card = vi.hoisted(() => ({ buyWithCard: vi.fn(), label: "Log in to buy with card" }));
+const funding = vi.hoisted(() => ({ openAddFunds: vi.fn() }));
 const wallet = vi.hoisted(() => ({ chainId: 314 }));
 
 vi.mock("wagmi", () => ({
@@ -24,7 +22,6 @@ vi.mock("wagmi", () => ({
   useWalletClient: () => ({ data: undefined }),
 }));
 vi.mock("@privy-io/react-auth", () => ({
-  useConnectWallet: () => ({ connectWallet: privy.connectWallet }),
   useExportWallet: () => ({ exportWallet: privy.exportWallet }),
   usePrivy: () => ({ authenticated: privy.authenticated, logout: privy.logout, user: null }),
 }));
@@ -32,7 +29,6 @@ vi.mock("@/hooks/useSynapse", () => ({
   default: () => ({ constants: { contracts: { usdfc: "0x2222222222222222222222222222222222222222" }, faucets: [] } }),
 }));
 vi.mock("@/components/UserConsole/FundingLaunchContext", () => ({ useFundingLaunch: () => funding }));
-vi.mock("@/components/UserConsole/FundsSection/hooks/useCardPurchase", () => ({ useCardPurchase: () => card }));
 vi.mock("@/components/UserConsole/TransactionReview", () => ({
   isReviewEnabled: () => false,
   setReviewEnabled: vi.fn(),
@@ -100,19 +96,15 @@ describe("Balance wallet menu", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("orders the menu as address, other wallets, funding, settings, then the way out", async () => {
-    const renderer = await render();
-    expect(JSON.stringify(renderer.toJSON())).not.toContain("MetaMask wallet");
-    expect(menuLabels(renderer)).toEqual([
-      SHORT_ADDRESS,
-      "Connect another wallet",
-      "Add funds",
-      "Log in to buy with card",
-      "Add USDFC to wallet",
-      "Disconnect",
-    ]);
-    expect(groupLabels(renderer)).toEqual(["Funding", "Settings"]);
-    await act(async () => renderer.unmount());
+  it("orders the menu as address, add funds, settings, then the way out, on every network", async () => {
+    for (const chainId of [314, 314159]) {
+      wallet.chainId = chainId;
+      const renderer = await render();
+      expect(JSON.stringify(renderer.toJSON())).not.toContain("MetaMask wallet");
+      expect(menuLabels(renderer)).toEqual([SHORT_ADDRESS, "Add funds", "Add USDFC to wallet", "Disconnect"]);
+      expect(groupLabels(renderer)).toEqual(["Settings"]);
+      await act(async () => renderer.unmount());
+    }
   });
 
   it("copies the full address when the address row is clicked", async () => {
@@ -126,30 +118,12 @@ describe("Balance wallet menu", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("opens the shared USDC payment from Add funds and buys with card through the shared hook", async () => {
+  it("opens the console-wide add-funds picker from Add funds", async () => {
     const renderer = await render();
     await act(async () => {
       menuItem(renderer, "Add funds").props.onClick();
     });
-    expect(funding.openUsdcFunding).toHaveBeenCalledOnce();
-
-    await act(async () => {
-      menuItem(renderer, "Log in to buy with card").props.onClick();
-    });
-    expect(card.buyWithCard).toHaveBeenCalledOnce();
-    await act(async () => renderer.unmount());
-  });
-
-  it("drops the whole Funding group where USDC funding cannot deposit, keeping the other wallets reachable", async () => {
-    wallet.chainId = 314159;
-    const renderer = await render();
-    expect(menuLabels(renderer)).toEqual([
-      SHORT_ADDRESS,
-      "Connect another wallet",
-      "Add USDFC to wallet",
-      "Disconnect",
-    ]);
-    expect(groupLabels(renderer)).toEqual(["Settings"]);
+    expect(funding.openAddFunds).toHaveBeenCalledOnce();
     await act(async () => renderer.unmount());
   });
 });

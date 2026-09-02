@@ -55,4 +55,24 @@ describe("AddFundsDialog", () => {
     expect(labelsOf(renderer)).toEqual(["Deposit USDFC", "Swap another token"]);
     expect(renderer.root.findByProps({ "aria-label": "Swap another token" }).props.disabled).toBe(true);
   });
+
+  it("keeps the swap card disabled while no dashboard can open the guided swap", () => {
+    let renderer!: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(
+        <AddFundsDialog
+          onOpenChange={() => undefined}
+          onSelect={() => undefined}
+          open
+          squidAvailable
+          squidDisabledReason='Open the dashboard to swap another token.'
+          swapAvailable={false}
+        />,
+      );
+    });
+    expect(labelsOf(renderer)).toEqual(["Buy USDC with card", "Pay with USDC", "Deposit USDFC", "Swap another token"]);
+    expect(renderer.root.findByProps({ "aria-label": "Swap another token" }).props.disabled).toBe(true);
+    const visibleText = renderer.root.findAllByType("span").flatMap((node) => node.children);
+    expect(visibleText).toContain("Open the dashboard to swap another token.");
+  });
 });

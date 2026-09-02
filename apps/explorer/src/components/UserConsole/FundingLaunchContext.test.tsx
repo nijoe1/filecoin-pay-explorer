@@ -1,35 +1,70 @@
 import { act, create } from "react-test-renderer";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FundingLaunchProvider, useFundingLaunch } from "./FundingLaunchContext";
 
 function Controls() {
-  const { closeUsdcFunding, isUsdcFundingOpen, openUsdcFunding } = useFundingLaunch();
+  const launch = useFundingLaunch();
   return (
     <>
-      <span data-open={isUsdcFundingOpen} />
-      <button data-launch onClick={openUsdcFunding} type='button' />
-      <button data-close onClick={closeUsdcFunding} type='button' />
+      <span
+        data-open={launch.isUsdcFundingOpen}
+        data-picker-open={launch.isAddFundsOpen}
+        data-swap={launch.guidedTopUp}
+      />
+      <button data-launch onClick={launch.openUsdcFunding} type='button' />
+      <button data-close onClick={launch.closeUsdcFunding} type='button' />
+      <button data-open-picker onClick={launch.openAddFunds} type='button' />
+      <button data-close-picker onClick={launch.closeAddFunds} type='button' />
+      <button data-register={launch.setGuidedTopUp} type='button' />
     </>
   );
 }
 
+function render() {
+  let renderer!: ReturnType<typeof create>;
+  act(() => {
+    renderer = create(
+      <FundingLaunchProvider>
+        <Controls />
+      </FundingLaunchProvider>,
+    );
+  });
+  return renderer;
+}
+const flag = (renderer: ReturnType<typeof create>, name: string) => renderer.root.findByType("span").props[name];
+const press = (renderer: ReturnType<typeof create>, name: string) =>
+  act(() => renderer.root.findByProps({ [name]: true }).props.onClick());
+
 describe("FundingLaunchContext", () => {
   it("opens and closes the shared USDC funding dialog", () => {
-    let renderer!: ReturnType<typeof create>;
-    act(() => {
-      renderer = create(
-        <FundingLaunchProvider>
-          <Controls />
-        </FundingLaunchProvider>,
-      );
-    });
-    expect(renderer.root.findByType("span").props["data-open"]).toBe(false);
+    const renderer = render();
+    expect(flag(renderer, "data-open")).toBe(false);
+    press(renderer, "data-launch");
+    expect(flag(renderer, "data-open")).toBe(true);
+    press(renderer, "data-close");
+    expect(flag(renderer, "data-open")).toBe(false);
+  });
 
-    act(() => renderer.root.findByProps({ "data-launch": true }).props.onClick());
-    expect(renderer.root.findByType("span").props["data-open"]).toBe(true);
+  it("opens and closes the shared add-funds picker", () => {
+    const renderer = render();
+    expect(flag(renderer, "data-picker-open")).toBe(false);
+    press(renderer, "data-open-picker");
+    expect(flag(renderer, "data-picker-open")).toBe(true);
+    press(renderer, "data-close-picker");
+    expect(flag(renderer, "data-picker-open")).toBe(false);
+  });
 
-    act(() => renderer.root.findByProps({ "data-close": true }).props.onClick());
-    expect(renderer.root.findByType("span").props["data-open"]).toBe(false);
+  it("keeps the guided swap opener while a dashboard registers one", () => {
+    const renderer = render();
+    const register = renderer.root.findAll((node) => node.type === "button" && "data-register" in node.props)[0].props[
+      "data-register"
+    ];
+    const openSwap = vi.fn();
+    expect(flag(renderer, "data-swap")).toBeNull();
+    act(() => register(openSwap));
+    expect(flag(renderer, "data-swap")).toBe(openSwap);
+    act(() => register(null));
+    expect(flag(renderer, "data-swap")).toBeNull();
   });
 
   it("refuses to run outside the provider", () => {

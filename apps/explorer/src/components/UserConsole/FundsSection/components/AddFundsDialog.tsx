@@ -21,6 +21,8 @@ type AddFundsDialogProps = {
   /** Card and USDC payments deposit into Filecoin mainnet, so they are hidden elsewhere. */
   squidAvailable: boolean;
   squidDisabledReason?: string;
+  /** The guided swap needs the dashboard that owns it; defaults to `squidAvailable`. */
+  swapAvailable?: boolean;
 };
 
 const cardBase = "group relative flex items-start gap-4 rounded-lg border p-4 text-left transition-colors";
@@ -75,6 +77,7 @@ export function AddFundsDialog({
   open,
   squidAvailable,
   squidDisabledReason,
+  swapAvailable = squidAvailable,
 }: AddFundsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -110,11 +113,11 @@ export function AddFundsDialog({
           <FundingMethodCard
             badge={squidAvailable ? undefined : "Testnet"}
             description={
-              squidAvailable
+              swapAvailable
                 ? "Swap ETH, USDC and more from another network into USDFC, then deposit it."
                 : (squidDisabledReason ?? "Available on Filecoin mainnet.")
             }
-            disabled={!squidAvailable}
+            disabled={!swapAvailable}
             icon={<Repeat className='h-5 w-5' />}
             label='Swap another token'
             onSelect={() => onSelect("squid")}

@@ -10,47 +10,30 @@ import {
   DropdownMenuTrigger,
 } from "@filecoin-pay/ui/components/dropdown-menu";
 import { Skeleton } from "@filecoin-pay/ui/components/skeleton";
-import { useConnectWallet, useExportWallet, usePrivy } from "@privy-io/react-auth";
-import {
-  ArrowUpRightIcon,
-  Check,
-  Coins,
-  Copy,
-  CreditCard,
-  KeyRound,
-  LogOut,
-  PlugZap,
-  ShieldCheck,
-  Wallet,
-} from "lucide-react";
+import { useExportWallet, usePrivy } from "@privy-io/react-auth";
+import { ArrowUpRightIcon, Check, Coins, Copy, KeyRound, LogOut, ShieldCheck, Wallet } from "lucide-react";
 import { useState } from "react";
 import { type Address, erc20Abi, formatEther } from "viem";
 import { useAccount, useBalance, useDisconnect, useReadContract, useWalletClient } from "wagmi";
 import FilecoinLogo from "@/assests/FilecoinLogo";
 import USDFCLogo from "@/assests/USDFCLogo";
 import { useFundingLaunch } from "@/components/UserConsole/FundingLaunchContext";
-import { isUsdcFundingAvailable } from "@/components/UserConsole/FundsSection/data/usdc-funding-availability";
-import { useCardPurchase } from "@/components/UserConsole/FundsSection/hooks/useCardPurchase";
 import { isReviewEnabled, setReviewEnabled, useIsEmbeddedSigner } from "@/components/UserConsole/TransactionReview";
 import useSynapse from "@/hooks/useSynapse";
 import { formatAddress } from "@/utils/formatter";
 
 /**
- * The wallet pill and its menu: the address (click to copy) and the other
- * wallets, how to add funds, wallet settings, and last of all the way out.
+ * The wallet pill and its menu: the address (click to copy), the way to add
+ * funds, wallet settings, and last of all the way out.
  */
 const Balance = () => {
   const { constants } = useSynapse();
-  const { address, chainId } = useAccount();
+  const { address } = useAccount();
   const { disconnect } = useDisconnect();
   const { authenticated, logout } = usePrivy();
-  const { connectWallet } = useConnectWallet();
   const { exportWallet } = useExportWallet();
-  const { openUsdcFunding } = useFundingLaunch();
-  // The card onramp delivers USDC on Base for the same mainnet flow, so the
-  // whole Funding group goes away where USDC funding cannot deposit.
-  const canFundWithUsdc = isUsdcFundingAvailable(chainId);
-  const card = useCardPurchase({ address, onPurchased: openUsdcFunding });
+  // The picker behind Add funds already shows only what the current network supports.
+  const { openAddFunds } = useFundingLaunch();
   const isEmbeddedSigner = useIsEmbeddedSigner();
   const [reviewOn, setReviewOn] = useState(() => isReviewEnabled());
   const { data: walletClient } = useWalletClient();
@@ -141,27 +124,12 @@ const Balance = () => {
           <span className='font-mono text-base'>{shortAddress}</span>
           {copied ? <Check className='ml-auto text-primary' /> : null}
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => connectWallet()} className='cursor-pointer py-2'>
-          <PlugZap />
-          <span className='text-base'>Connect another wallet</span>
-        </DropdownMenuItem>
 
-        {canFundWithUsdc ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className='py-2 text-muted-foreground'>Funding</DropdownMenuLabel>
-              <DropdownMenuItem onClick={openUsdcFunding} className='cursor-pointer py-2'>
-                <Coins />
-                <span className='text-base'>Add funds</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void card.buyWithCard()} className='cursor-pointer py-2'>
-                <CreditCard />
-                <span className='text-base'>{card.label}</span>
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-          </>
-        ) : null}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={openAddFunds} className='cursor-pointer py-2'>
+          <Coins />
+          <span className='text-base'>Add funds</span>
+        </DropdownMenuItem>
 
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
