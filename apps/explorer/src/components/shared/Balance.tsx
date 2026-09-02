@@ -92,8 +92,9 @@ const Balance = () => {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant='outline' className='min-w-0 flex-1 justify-start md:flex-none md:w-fit'>
-          <div className='flex items-center gap-3'>
-            <Wallet className='size-4 text-muted-foreground' />
+          {/* On a phone the pill shares a row with the network switcher; the glyph goes, the numbers stay. */}
+          <div className='flex items-center gap-2 sm:gap-3'>
+            <Wallet className='hidden size-4 text-muted-foreground sm:block' />
             {isLoading ? (
               <>
                 <Skeleton className='h-4 w-24' />

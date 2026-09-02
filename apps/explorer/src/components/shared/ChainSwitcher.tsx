@@ -26,7 +26,8 @@ const ChainSwitcher = ({ chainId }: ChainSwitcherProps) => {
         <Button variant='outline' className='shrink-0 justify-between'>
           <span className='flex items-center gap-2'>
             <Globe className='size-4 text-muted-foreground' />
-            {currentChain.label}
+            {/* On a phone the name yields its room to the wallet pill beside it. */}
+            <span className='hidden sm:inline'>{currentChain.label}</span>
           </span>
           <ChevronDown className='size-4 text-muted-foreground' />
         </Button>
