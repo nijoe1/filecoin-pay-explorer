@@ -19,7 +19,8 @@ const storage = {
   setItem: (key: string, value: string) => storedValues.set(key, value),
 };
 
-vi.mock("@tanstack/react-query", () => ({
+vi.mock("@tanstack/react-query", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-query")>()),
   useQuery: () => ({ data: undefined, isFetching: false }),
 }));
 vi.mock("next/navigation", () => ({

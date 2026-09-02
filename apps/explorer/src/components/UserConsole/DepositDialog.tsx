@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from "@filecoin-pay/ui/components/dialog";
 import { Label } from "@filecoin-pay/ui/components/label";
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { Loader2, Wallet } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { erc20Abi, formatUnits, type Hex, isAddress, parseUnits } from "viem";
@@ -231,7 +231,7 @@ export const DepositDialog = ({ depositToken, tokens, open, onOpenChange }: Depo
   const isUsdfcDeposit = currentToken?.address.toLowerCase() === constants.contracts.usdfc.toLowerCase();
   const { data: accountSummary, isFetching: isAccountSummaryLoading } = useQuery({
     enabled: open && isUsdfcDeposit && Boolean(userAddress) && synapse?.chain.id === constants.chain.id,
-    queryFn: synapse ? () => synapse.payments.accountSummary() : undefined,
+    queryFn: synapse ? () => synapse.payments.accountSummary() : skipToken,
     queryKey: ["payments", "account-summary", constants.chain.id, userAddress],
   });
 

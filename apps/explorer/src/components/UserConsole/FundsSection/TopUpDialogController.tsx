@@ -1,5 +1,5 @@
 import { Button } from "@filecoin-foundation/ui-filecoin/Button";
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useConnection } from "wagmi";
@@ -37,7 +37,7 @@ export function TopUpDialogController({ accountId, children, showTrigger = false
   const targetChain = getChain("mainnet");
   const { data: accountSummary, isFetching: isAccountSummaryLoading } = useQuery({
     enabled: open && !!address && synapse?.chain.id === targetChain.id,
-    queryFn: synapse ? () => synapse.payments.accountSummary() : undefined,
+    queryFn: synapse ? () => synapse.payments.accountSummary() : skipToken,
     queryKey: ["payments", "account-summary", targetChain.id, address],
   });
 
