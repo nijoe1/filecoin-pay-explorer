@@ -1,7 +1,7 @@
 import type { Account, UserToken } from "@filecoin-pay/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DepositDialog } from "@/components/UserConsole/DepositDialog";
-import { useUsdcFundingLaunch } from "@/components/UserConsole/FundingLaunchContext";
+import { useFundingLaunch } from "@/components/UserConsole/FundingLaunchContext";
 import { WithdrawDialog } from "@/components/UserConsole/WithdrawDialog";
 import { useAccountTokens } from "@/hooks/useAccountDetails";
 import useSynapse from "@/hooks/useSynapse";
@@ -15,7 +15,6 @@ import {
   FundsLoadingState,
   FundsOverview,
   FundsSectionLayout,
-  FundWithUsdcDialog,
   TokenSelect,
 } from "./components";
 
@@ -47,7 +46,6 @@ const findDefaultToken = (userTokens: UserToken[], usdfcAddress: string): UserTo
 
 export const FundsSection = ({ account, network, onGuidedTopUp }: FundsSectionProps) => {
   const [addFundsOpen, setAddFundsOpen] = useState(false);
-  const [usdcDialogOpen, setUsdcDialogOpen] = useState(false);
   const [depositDialogOpen, setDepositDialogOpen] = useState(false);
   const [depositToken, setDepositToken] = useState<UserToken | null>(null);
 
@@ -96,10 +94,8 @@ export const FundsSection = ({ account, network, onGuidedTopUp }: FundsSectionPr
 
   const canUseGuidedTopUp = network === "mainnet" && Boolean(onGuidedTopUp);
 
-  // The wallet menu can ask for USDC funding from anywhere in the console.
-  useUsdcFundingLaunch(() => {
-    if (canUseGuidedTopUp) setUsdcDialogOpen(true);
-  });
+  // The USDC dialog is rendered once by UsdcFundingHost in the console layout.
+  const { openUsdcFunding } = useFundingLaunch();
 
   const handleOpenDeposit = useCallback(() => {
     if (canUseGuidedTopUp) {
@@ -117,12 +113,12 @@ export const FundsSection = ({ account, network, onGuidedTopUp }: FundsSectionPr
         return;
       }
       if (method === "usdc") {
-        setUsdcDialogOpen(true);
+        openUsdcFunding();
         return;
       }
       onGuidedTopUp?.();
     },
-    [onGuidedTopUp, openDirectDeposit],
+    [onGuidedTopUp, openDirectDeposit, openUsdcFunding],
   );
 
   const handleOpenWithdraw = useCallback(() => {
@@ -167,10 +163,6 @@ export const FundsSection = ({ account, network, onGuidedTopUp }: FundsSectionPr
           open={addFundsOpen}
           squidAvailable
         />
-      ) : null}
-
-      {canUseGuidedTopUp ? (
-        <FundWithUsdcDialog accountId={account.id} onOpenChange={setUsdcDialogOpen} open={usdcDialogOpen} />
       ) : null}
 
       {/* A null token opens the picker expanded, the first-deposit path for an empty account. */}

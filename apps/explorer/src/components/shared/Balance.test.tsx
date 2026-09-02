@@ -15,10 +15,11 @@ const privy = vi.hoisted(() => ({
   logout: vi.fn(),
   onLoginComplete: undefined as (() => void) | undefined,
 }));
-const funding = vi.hoisted(() => ({ launchUsdcFunding: vi.fn() }));
+const funding = vi.hoisted(() => ({ openUsdcFunding: vi.fn() }));
+const wallet = vi.hoisted(() => ({ chainId: 314 }));
 
 vi.mock("wagmi", () => ({
-  useAccount: () => ({ address: ADDRESS }),
+  useAccount: () => ({ address: ADDRESS, chainId: wallet.chainId }),
   useBalance: () => ({ data: { value: 0n }, isLoading: false }),
   useDisconnect: () => ({ disconnect: vi.fn() }),
   useReadContract: () => ({ data: 0n, isLoading: false }),
@@ -68,6 +69,28 @@ const menuItem = (renderer: ReturnType<typeof create>, label: string) =>
 beforeEach(() => {
   privy.authenticated = false;
   privy.onLoginComplete = undefined;
+  wallet.chainId = 314;
+});
+
+describe("Balance USDC funding", () => {
+  it("opens the shared USDC dialog from the menu on mainnet and hides it on calibration", async () => {
+    let renderer!: ReturnType<typeof create>;
+    await act(async () => {
+      renderer = create(<Balance />);
+    });
+    await act(async () => {
+      menuItem(renderer, "Fund with USDC").props.onClick();
+    });
+    expect(funding.openUsdcFunding).toHaveBeenCalledOnce();
+    await act(async () => renderer.unmount());
+
+    wallet.chainId = 314159;
+    await act(async () => {
+      renderer = create(<Balance />);
+    });
+    expect(() => menuItem(renderer, "Fund with USDC")).toThrow();
+    await act(async () => renderer.unmount());
+  });
 });
 
 describe("Balance card purchases", () => {
@@ -91,7 +114,7 @@ describe("Balance card purchases", () => {
       destination: { address: ADDRESS, chain: "eip155:8453", asset: BASE_USDC },
       environment: "production",
     });
-    expect(funding.launchUsdcFunding).toHaveBeenCalledOnce();
+    expect(funding.openUsdcFunding).toHaveBeenCalledOnce();
 
     await act(async () => renderer.unmount());
   });

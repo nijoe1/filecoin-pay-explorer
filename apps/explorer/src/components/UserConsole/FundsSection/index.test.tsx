@@ -8,6 +8,7 @@ const USDFC = "0x3333333333333333333333333333333333333333";
 const OTHER_TOKEN = "0x4444444444444444444444444444444444444444";
 
 const tokenState = vi.hoisted(() => ({ userTokens: [] as UserToken[] }));
+const launch = vi.hoisted(() => ({ openUsdcFunding: vi.fn() }));
 
 vi.mock("@/hooks/useAccountDetails", () => ({
   useAccountTokens: () => ({ data: { userTokens: tokenState.userTokens }, isError: false, isLoading: false }),
@@ -15,6 +16,7 @@ vi.mock("@/hooks/useAccountDetails", () => ({
 vi.mock("@/hooks/useSynapse", () => ({
   default: () => ({ constants: { contracts: { usdfc: USDFC } } }),
 }));
+vi.mock("@/components/UserConsole/FundingLaunchContext", () => ({ useFundingLaunch: () => launch }));
 vi.mock("@/components/UserConsole/DepositDialog", () => ({
   DepositDialog: ({ open }: { open: boolean }) => (open ? <div data-direct-deposit /> : null),
 }));
@@ -27,7 +29,6 @@ vi.mock("./components", () => ({
         <button aria-label='Choose USDC funding' onClick={() => onSelect("usdc")} type='button' />
       </>
     ) : null,
-  FundWithUsdcDialog: ({ open }: { open: boolean }) => (open ? <div data-usdc-dialog /> : null),
   FundsEmptyState: ({ onDeposit }: { onDeposit: () => void }) => (
     <button aria-label='Add funds to empty account' onClick={onDeposit} type='button' />
   ),
@@ -92,7 +93,7 @@ describe("FundsSection guided funding", () => {
 });
 
 describe("FundsSection USDC funding", () => {
-  it("opens the USDC funding dialog from the add-funds chooser", async () => {
+  it("opens the shared USDC funding dialog from the add-funds chooser", async () => {
     let renderer!: ReturnType<typeof create>;
     await act(async () => {
       renderer = create(<FundsSection account={account} network='mainnet' onGuidedTopUp={() => undefined} />);
@@ -101,12 +102,13 @@ describe("FundsSection USDC funding", () => {
     await act(async () => {
       renderer.root.findByProps({ "aria-label": "Add funds to empty account" }).props.onClick();
     });
-    expect(renderer.root.findAllByProps({ "data-usdc-dialog": true })).toHaveLength(0);
+    expect(launch.openUsdcFunding).not.toHaveBeenCalled();
 
     await act(async () => {
       renderer.root.findByProps({ "aria-label": "Choose USDC funding" }).props.onClick();
     });
-    expect(renderer.root.findAllByProps({ "data-usdc-dialog": true })).toHaveLength(1);
+    expect(launch.openUsdcFunding).toHaveBeenCalledOnce();
+    expect(renderer.root.findAllByProps({ "aria-label": "Choose USDC funding" })).toHaveLength(0);
 
     await act(async () => renderer.unmount());
   });

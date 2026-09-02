@@ -13,6 +13,7 @@ const dialog = vi.hoisted(() => ({
 }));
 let storageListener: ((event: StorageEvent) => void) | undefined;
 const storedValues = new Map<string, string>();
+const launch = vi.hoisted(() => ({ openUsdcFunding: vi.fn() }));
 const storage = {
   getItem: (key: string) => storedValues.get(key) ?? null,
   removeItem: (key: string) => storedValues.delete(key),
@@ -34,8 +35,8 @@ vi.mock("wagmi", () => ({
 vi.mock("@/hooks/useSynapse", () => ({
   default: () => ({ synapse: undefined }),
 }));
+vi.mock("@/components/UserConsole/FundingLaunchContext", () => ({ useFundingLaunch: () => launch }));
 vi.mock("./components", () => ({
-  FundWithUsdcDialog: ({ open }: { open: boolean }) => <div data-usdc-dialog-open={open} />,
   GuidedTopUpDialog: ({
     onOpenChange,
     open,
@@ -230,7 +231,7 @@ describe("TopUpDialogController recovery", () => {
 });
 
 describe("TopUpDialogController trigger", () => {
-  it("opens the USDC funding dialog instead of the guided swap", () => {
+  it("opens the shared USDC funding dialog instead of the guided swap", () => {
     let renderer!: ReturnType<typeof create>;
     act(() => {
       renderer = create(
@@ -239,10 +240,8 @@ describe("TopUpDialogController trigger", () => {
         </TopUpActivityProvider>,
       );
     });
-    expect(renderer.root.findByProps({ "data-usdc-dialog-open": false })).toBeDefined();
-
     act(() => renderer.root.findByProps({ "aria-label": "Fund with USDC" }).props.onClick());
-    expect(renderer.root.findByProps({ "data-usdc-dialog-open": true })).toBeDefined();
+    expect(launch.openUsdcFunding).toHaveBeenCalledOnce();
     expect(dialog.open).toBe(false);
   });
 });

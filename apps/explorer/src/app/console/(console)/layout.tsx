@@ -7,6 +7,7 @@ import { ConsoleHeader } from "@/components/UserConsole/ConsoleHeader";
 import { ConsoleNavDrawer } from "@/components/UserConsole/ConsoleNavDrawer";
 import ConsoleProviders from "@/components/UserConsole/ConsoleProviders";
 import { ConsoleSidebar } from "@/components/UserConsole/ConsoleSidebar";
+import { UsdcFundingHost } from "@/components/UserConsole/FundsSection/UsdcFundingHost";
 import { NotConnected, UnsupportedChain } from "@/components/UserConsole/States";
 import { useTopUpActivity } from "@/components/UserConsole/TopUpActivityContext";
 import { ConsoleContent } from "./ConsoleContent";
@@ -57,6 +58,7 @@ const ConsoleShell = ({ children }: { children: ReactNode }) => {
           </div>
         </Container>
       </div>
+      <UsdcFundingHost />
     </div>
   );
 };

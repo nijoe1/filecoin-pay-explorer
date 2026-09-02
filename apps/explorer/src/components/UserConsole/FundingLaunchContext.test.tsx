@@ -1,41 +1,42 @@
 import { act, create } from "react-test-renderer";
-import { describe, expect, it, vi } from "vitest";
-import { FundingLaunchProvider, useFundingLaunch, useUsdcFundingLaunch } from "./FundingLaunchContext";
+import { describe, expect, it } from "vitest";
+import { FundingLaunchProvider, useFundingLaunch } from "./FundingLaunchContext";
 
-function Launcher() {
-  const { launchUsdcFunding } = useFundingLaunch();
-  return <button data-launch onClick={launchUsdcFunding} type='button' />;
-}
-
-function Listener({ onLaunch }: { onLaunch: () => void }) {
-  useUsdcFundingLaunch(onLaunch);
-  return null;
+function Controls() {
+  const { closeUsdcFunding, isUsdcFundingOpen, openUsdcFunding } = useFundingLaunch();
+  return (
+    <>
+      <span data-open={isUsdcFundingOpen} />
+      <button data-launch onClick={openUsdcFunding} type='button' />
+      <button data-close onClick={closeUsdcFunding} type='button' />
+    </>
+  );
 }
 
 describe("FundingLaunchContext", () => {
-  it("notifies listeners once per launch and not on mount", () => {
-    const onLaunch = vi.fn();
+  it("opens and closes the shared USDC funding dialog", () => {
     let renderer!: ReturnType<typeof create>;
     act(() => {
       renderer = create(
         <FundingLaunchProvider>
-          <Launcher />
-          <Listener onLaunch={onLaunch} />
+          <Controls />
         </FundingLaunchProvider>,
       );
     });
-    expect(onLaunch).not.toHaveBeenCalled();
+    expect(renderer.root.findByType("span").props["data-open"]).toBe(false);
 
     act(() => renderer.root.findByProps({ "data-launch": true }).props.onClick());
-    act(() => renderer.root.findByProps({ "data-launch": true }).props.onClick());
-    expect(onLaunch).toHaveBeenCalledTimes(2);
+    expect(renderer.root.findByType("span").props["data-open"]).toBe(true);
+
+    act(() => renderer.root.findByProps({ "data-close": true }).props.onClick());
+    expect(renderer.root.findByType("span").props["data-open"]).toBe(false);
   });
 
-  it("is a no-op for listeners rendered outside the provider", () => {
-    const onLaunch = vi.fn();
-    act(() => {
-      create(<Listener onLaunch={onLaunch} />);
-    });
-    expect(onLaunch).not.toHaveBeenCalled();
+  it("refuses to run outside the provider", () => {
+    expect(() =>
+      act(() => {
+        create(<Controls />);
+      }),
+    ).toThrow("useFundingLaunch must be used within FundingLaunchProvider");
   });
 });

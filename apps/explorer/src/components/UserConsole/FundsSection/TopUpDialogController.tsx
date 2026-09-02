@@ -3,11 +3,11 @@ import { skipToken, useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useConnection } from "wagmi";
-import { useUsdcFundingLaunch } from "@/components/UserConsole/FundingLaunchContext";
+import { useFundingLaunch } from "@/components/UserConsole/FundingLaunchContext";
 import { getChain } from "@/constants/chains";
 import useSynapse from "@/hooks/useSynapse";
 import { useTopUpActivity } from "../TopUpActivityContext";
-import { FundWithUsdcDialog, GuidedTopUpDialog } from "./components";
+import { GuidedTopUpDialog } from "./components";
 import { withoutTopUpSearchParam } from "./data/guided-top-up";
 import { getSquidAcquisitionStorageKey, hasSavedSquidAcquisition } from "./data/squid-acquisition";
 
@@ -19,12 +19,7 @@ interface TopUpDialogControllerProps {
 
 export function TopUpDialogController({ accountId, children, showTrigger = false }: TopUpDialogControllerProps) {
   const [open, setOpen] = useState(false);
-  const [usdcOpen, setUsdcOpen] = useState(false);
-  // Only the instance that shows the standalone trigger (no account yet)
-  // answers launch requests; otherwise the funds section owns the dialog.
-  useUsdcFundingLaunch(() => {
-    if (showTrigger) setUsdcOpen(true);
-  });
+  const { openUsdcFunding } = useFundingLaunch();
   const [hasSavedAcquisition, setHasSavedAcquisition] = useState(false);
   const [recoveryRevision, setRecoveryRevision] = useState(0);
   const didAutoOpenSavedAcquisition = useRef(false);
@@ -126,12 +121,11 @@ export function TopUpDialogController({ accountId, children, showTrigger = false
       {children?.(openTopUp, open)}
       {showTrigger && (
         <div className='flex justify-center'>
-          <Button aria-label='Fund with USDC' onClick={() => setUsdcOpen(true)} variant='primary'>
+          <Button aria-label='Fund with USDC' onClick={openUsdcFunding} variant='primary'>
             Fund with USDC
           </Button>
         </div>
       )}
-      <FundWithUsdcDialog accountId={accountId} onOpenChange={setUsdcOpen} open={usdcOpen} />
       <GuidedTopUpDialog
         accountId={accountId}
         accountSummary={accountSummary}

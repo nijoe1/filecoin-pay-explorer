@@ -1,34 +1,30 @@
 "use client";
 
-import {
-  createContext,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 
 type FundingLaunch = {
-  /** Increments each time something asks the console to open USDC funding. */
-  usdcLaunchCount: number;
-  launchUsdcFunding: () => void;
+  /** Whether the console-wide "Fund with USDC" dialog is open. */
+  isUsdcFundingOpen: boolean;
+  openUsdcFunding: () => void;
+  closeUsdcFunding: () => void;
 };
 
 const FundingLaunchContext = createContext<FundingLaunch | null>(null);
 
 /**
- * Lets console chrome such as the wallet menu open the USDC funding dialog
- * that lives inside the funds section, without threading callbacks through
- * every layer in between.
+ * Holds the open state of the USDC funding dialog for the whole console. The
+ * wallet menu, the add-funds picker and the first-time trigger all open the
+ * same dialog, which UsdcFundingHost renders exactly once, so a request to
+ * fund is never dropped for want of a listener.
  */
 export function FundingLaunchProvider({ children }: { children: ReactNode }) {
-  const [usdcLaunchCount, setUsdcLaunchCount] = useState(0);
-  const launchUsdcFunding = useCallback(() => setUsdcLaunchCount((count) => count + 1), []);
-  const value = useMemo(() => ({ usdcLaunchCount, launchUsdcFunding }), [usdcLaunchCount, launchUsdcFunding]);
+  const [isUsdcFundingOpen, setUsdcFundingOpen] = useState(false);
+  const openUsdcFunding = useCallback(() => setUsdcFundingOpen(true), []);
+  const closeUsdcFunding = useCallback(() => setUsdcFundingOpen(false), []);
+  const value = useMemo(
+    () => ({ isUsdcFundingOpen, openUsdcFunding, closeUsdcFunding }),
+    [isUsdcFundingOpen, openUsdcFunding, closeUsdcFunding],
+  );
   return <FundingLaunchContext.Provider value={value}>{children}</FundingLaunchContext.Provider>;
 }
 
@@ -36,17 +32,4 @@ export function useFundingLaunch(): FundingLaunch {
   const launch = useContext(FundingLaunchContext);
   if (!launch) throw new Error("useFundingLaunch must be used within FundingLaunchProvider");
   return launch;
-}
-
-/** Runs `onLaunch` for every launch requested after mount. No-op outside the provider. */
-export function useUsdcFundingLaunch(onLaunch: () => void) {
-  const launch = useContext(FundingLaunchContext);
-  const count = launch?.usdcLaunchCount ?? 0;
-  const seen = useRef(count);
-  const handleLaunch = useEffectEvent(onLaunch);
-  useEffect(() => {
-    if (count === seen.current) return;
-    seen.current = count;
-    handleLaunch();
-  }, [count]);
 }

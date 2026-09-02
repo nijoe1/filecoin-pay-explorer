@@ -28,6 +28,7 @@ import { useAccount, useBalance, useDisconnect, useReadContract, useWalletClient
 import FilecoinLogo from "@/assests/FilecoinLogo";
 import USDFCLogo from "@/assests/USDFCLogo";
 import { useFundingLaunch } from "@/components/UserConsole/FundingLaunchContext";
+import { isUsdcFundingAvailable } from "@/components/UserConsole/FundsSection/data/usdc-funding-availability";
 import {
   BASE_CHAIN_ID,
   BASE_USDC,
@@ -41,13 +42,14 @@ import { formatAddress } from "@/utils/formatter";
 
 const Balance = () => {
   const { constants } = useSynapse();
-  const { address } = useAccount();
+  const { address, chainId } = useAccount();
   const { disconnect } = useDisconnect();
   const { authenticated, logout } = usePrivy();
   const { fund: fundWithCard } = useFiatOnramp();
   const { connectWallet } = useConnectWallet();
   const { exportWallet } = useExportWallet();
-  const { launchUsdcFunding } = useFundingLaunch();
+  const { openUsdcFunding } = useFundingLaunch();
+  const canFundWithUsdc = isUsdcFundingAvailable(chainId);
   const isEmbeddedSigner = useIsEmbeddedSigner();
   const [reviewOn, setReviewOn] = useState(() => isReviewEnabled());
   const { data: walletClient } = useWalletClient();
@@ -89,7 +91,7 @@ const Balance = () => {
           environment: readOnrampEnvironment(),
         }),
       );
-      launchUsdcFunding();
+      openUsdcFunding();
     } catch (error) {
       if (!isFundingExit(error)) {
         toast.error("Card purchases are unavailable", {
@@ -181,10 +183,12 @@ const Balance = () => {
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel className='text-zinc-600 py-2'>Funding</DropdownMenuLabel>
-        <DropdownMenuItem onClick={launchUsdcFunding} className='cursor-pointer py-2'>
-          <Coins />
-          <span className='text-base text-zinc-950'>Fund with USDC</span>
-        </DropdownMenuItem>
+        {canFundWithUsdc ? (
+          <DropdownMenuItem onClick={openUsdcFunding} className='cursor-pointer py-2'>
+            <Coins />
+            <span className='text-base text-zinc-950'>Fund with USDC</span>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem onClick={() => void buyUsdcWithCardOrLogin()} className='cursor-pointer py-2'>
           <CreditCard />
           <span className='text-base text-zinc-950'>
