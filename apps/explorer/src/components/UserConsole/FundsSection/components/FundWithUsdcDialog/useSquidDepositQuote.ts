@@ -77,8 +77,17 @@ export function useSquidDepositQuote({
   const balances = balancesQuery.data;
 
   const parsedAmount = sourceToken ? parseFundingAmount(amount, sourceToken.decimals) : null;
+  const hasInsufficientUsdc = balances !== undefined && parsedAmount !== null && balances.token < parsedAmount;
+  // No quote for an amount the wallet cannot pay: the shortfall is the answer then.
   const quoteQuery = useQuery({
-    enabled: open && isQuoting && !!payingWallet && !!sourceToken && !!recipient && parsedAmount !== null,
+    enabled:
+      open &&
+      isQuoting &&
+      !!payingWallet &&
+      !!sourceToken &&
+      !!recipient &&
+      parsedAmount !== null &&
+      !hasInsufficientUsdc,
     queryFn: () => {
       if (!payingWallet || !sourceToken || !recipient || parsedAmount === null) throw new Error("Quote unavailable");
       return requestSquidDepositRoute(
@@ -111,7 +120,6 @@ export function useSquidDepositQuote({
     quote && balances
       ? getDepositRequiredNativeBalance(quote, sourceChainId, APPROVAL_GAS_UNITS * balances.gasPrice)
       : null;
-  const hasInsufficientUsdc = balances !== undefined && parsedAmount !== null && balances.token < parsedAmount;
   const hasInsufficientGas = balances !== undefined && requiredNative !== null && balances.native < requiredNative;
   const gasShortfall =
     balances !== undefined && requiredNative !== null && requiredNative > balances.native

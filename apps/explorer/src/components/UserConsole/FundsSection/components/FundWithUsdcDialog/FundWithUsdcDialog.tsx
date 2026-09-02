@@ -409,9 +409,9 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
               <div className='grid gap-2'>
                 <div className='flex items-center justify-between gap-2'>
                   <Label htmlFor={amountInputId}>Amount ({sourceToken?.symbol ?? "USDC"})</Label>
-                  {balances && sourceToken && (
+                  {balances && balances.token > 0n && sourceToken && (
                     <Button
-                      disabled={isBusy || balances.token === 0n}
+                      disabled={isBusy}
                       onClick={() => setAmount(formatUnits(balances.token, sourceToken.decimals))}
                       size='compact'
                       type='button'

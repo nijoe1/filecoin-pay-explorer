@@ -191,6 +191,8 @@ describe("FundWithUsdcDialog", () => {
 
     expect(renderer.root.findByProps({ "aria-label": "Review payment" }).props.disabled).toBe(true);
     expect(has(renderer, "Pay with USDC")).toBe(false);
+    // Nothing to fill the amount with, so there is no Max.
+    expect(text(renderer)).not.toContain("Max (");
     // No network holds USDC, so Privy's funding is offered; the embedded wallet is the default payer.
     expect(text(renderer)).toContain("Your Privy wallet holds no USDC on any supported network yet.");
     expect(has(renderer, "Add USDC with Privy")).toBe(true);
@@ -240,7 +242,7 @@ describe("FundWithUsdcDialog", () => {
     const renderer = await render();
 
     expect(text(renderer)).toContain("Arbitrum");
-    expect(text(renderer)).toContain("120.5");
+    expect(text(renderer)).toContain("Max (120.5 USDC)");
     expect(has(renderer, "Buy USDC with card")).toBe(false);
     expect(has(renderer, "Pay from Arbitrum")).toBe(false);
 
