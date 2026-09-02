@@ -3,9 +3,13 @@ import { WagmiProvider } from "@privy-io/wagmi";
 import { calibration, mainnet, SQUID_SOURCE_CHAINS } from "@/constants/chains";
 import { SynapseProvider } from "@/context/Synapse";
 import { config } from "@/services/wagmi/config";
+import { createConsoleWalletSelector } from "./console-wallet";
+import { FundingLaunchProvider } from "./FundingLaunchContext";
 import { TopUpActivityProvider } from "./TopUpActivityContext";
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+// Module-level so the selection survives re-renders; see createConsoleWalletSelector.
+const selectConsoleWallet = createConsoleWalletSelector();
 
 const ConsoleProviders = ({ children }: { children: React.ReactNode }) => {
   if (!PRIVY_APP_ID) {
@@ -42,9 +46,13 @@ const ConsoleProviders = ({ children }: { children: React.ReactNode }) => {
         appearance: { walletChainType: "ethereum-only" },
       }}
     >
-      <WagmiProvider config={config}>
+      {/* Pins wagmi's active wallet to the console identity so connecting a
+          second wallet (to fund this one) never switches accounts. */}
+      <WagmiProvider config={config} setActiveWalletForWagmi={selectConsoleWallet}>
         <SynapseProvider>
-          <TopUpActivityProvider>{children}</TopUpActivityProvider>
+          <TopUpActivityProvider>
+            <FundingLaunchProvider>{children}</FundingLaunchProvider>
+          </TopUpActivityProvider>
         </SynapseProvider>
       </WagmiProvider>
     </PrivyProvider>

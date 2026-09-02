@@ -5,9 +5,10 @@ import { useAccount } from "wagmi";
 
 /**
  * Console entry point for identity. "Log in" opens Privy's modal (email,
- * Google, or wallet-with-signature). The secondary action connects an external
- * wallet only — no signature, no Privy account — preserving the previous
- * plain-wallet-connect experience.
+ * Google, or wallet-with-signature) and creates an embedded wallet for
+ * email/social users. The secondary action connects an external wallet only,
+ * with no signature and no Privy account, preserving the plain wallet-connect
+ * experience.
  */
 const CustomConnectButton = () => {
   const { ready, authenticated, login } = usePrivy();
@@ -17,17 +18,16 @@ const CustomConnectButton = () => {
   if (!ready || isConnected || authenticated) return null;
 
   return (
-    <div className='flex flex-col items-center gap-2'>
-      <Button variant='primary' onClick={login} type='button' size='compact'>
+    <div className='flex w-full max-w-xs flex-col items-center gap-3'>
+      <Button className='w-full' onClick={login} type='button' variant='primary'>
         Log in
       </Button>
-      <button
-        type='button'
-        onClick={() => connectWallet()}
-        className='text-sm underline underline-offset-2 opacity-70 hover:opacity-100'
-      >
-        Just connect a wallet (no account)
-      </button>
+      <Button className='w-full' onClick={() => connectWallet()} size='compact' type='button' variant='tertiary'>
+        Connect a wallet instead
+      </Button>
+      <p className='text-center text-xs text-muted-foreground'>
+        Logging in with email or Google creates a wallet for you. Connecting a wallet uses it directly, with no account.
+      </p>
     </div>
   );
 };

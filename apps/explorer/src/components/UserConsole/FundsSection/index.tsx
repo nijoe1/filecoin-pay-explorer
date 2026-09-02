@@ -1,6 +1,7 @@
 import type { Account, UserToken } from "@filecoin-pay/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DepositDialog } from "@/components/UserConsole/DepositDialog";
+import { useUsdcFundingLaunch } from "@/components/UserConsole/FundingLaunchContext";
 import { WithdrawDialog } from "@/components/UserConsole/WithdrawDialog";
 import { useAccountTokens } from "@/hooks/useAccountDetails";
 import useSynapse from "@/hooks/useSynapse";
@@ -94,6 +95,11 @@ export const FundsSection = ({ account, network, onGuidedTopUp }: FundsSectionPr
   }, [selectedToken]);
 
   const canUseGuidedTopUp = network === "mainnet" && Boolean(onGuidedTopUp);
+
+  // The wallet menu can ask for USDC funding from anywhere in the console.
+  useUsdcFundingLaunch(() => {
+    if (canUseGuidedTopUp) setUsdcDialogOpen(true);
+  });
 
   const handleOpenDeposit = useCallback(() => {
     if (canUseGuidedTopUp) {

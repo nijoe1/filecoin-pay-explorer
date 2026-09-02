@@ -22,6 +22,12 @@ Squid route quotes use the public `filecoin-testing-94a4a25a-d40b-41cb-b148-e960
 
 The console signs in through [Privy](https://www.privy.io/): email or Google login creates an embedded wallet, and external wallets connect as before. "Fund with USDC" in the console pays USDC from any connected wallet, swaps it to USDFC through Squid, and deposits it into the Filecoin Pay account in one transaction.
 
+In the [Privy dashboard](https://dashboard.privy.io) the app needs:
+
+- Login methods: email, Google, and wallet (Configuration > Login methods).
+- Allowed origins for every domain the explorer runs on.
+- Funding enabled on the Funding page for the wallet menu's "Buy USDC with card" and the dialog's "Add USDC" buttons. Card onramps use Stripe and MoonPay by default; a Coinbase Developer Platform key adds exchange transfers.
+
 **Setup:**
 
 1. Copy the example file:

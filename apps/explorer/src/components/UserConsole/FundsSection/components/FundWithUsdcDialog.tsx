@@ -13,7 +13,7 @@ import {
 import { Label } from "@filecoin-pay/ui/components/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@filecoin-pay/ui/components/select";
 import { fetchSourceTokens } from "@filecoin-project/squid-evm-funding";
-import { type ConnectedWallet, useConnectWallet, useFundWallet, useWallets } from "@privy-io/react-auth";
+import { type ConnectedWallet, useAddFunds, useConnectWallet, useFundWallet, useWallets } from "@privy-io/react-auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { useDebounce } from "use-debounce";
 import { type Address, createWalletClient, custom, erc20Abi, formatUnits, type Hash, parseUnits } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
+import { isPrivyEmbeddedWallet } from "@/components/UserConsole/console-wallet";
 import { useTopUpActivity } from "@/components/UserConsole/TopUpActivityContext";
 import { useTransactionReview } from "@/components/UserConsole/TransactionReview";
 import { mainnet, SQUID_SOURCE_CHAINS } from "@/constants/chains";
@@ -52,12 +53,13 @@ import {
 import { walletErrorMessage } from "../data/squid-execution";
 import { squidFetch } from "../data/squid-quote";
 
+export { isPrivyEmbeddedWallet };
+
 const QUOTE_DEBOUNCE_MS = 500;
 // Base has the cheapest gas among the Squid source networks and is where
 // Privy's funding flows deliver USDC.
 const DEFAULT_SOURCE_CHAIN_ID = 8453;
 const APPROVAL_GAS_UNITS = 60_000n;
-const DEFAULT_FUND_USDC_AMOUNT = "25";
 const MINIMUM_GAS_TOP_UP = "0.002";
 // Same public integrator ID the guided top-up falls back to.
 const DEFAULT_INTEGRATOR_ID = "filecoin-testing-94a4a25a-d40b-41cb-b148-e96098862";
@@ -69,13 +71,9 @@ const STAGE_LABELS: Record<UiStage, string> = {
   approving: "Approving USDC…",
   "swap-requested": "Waiting for the transaction to be signed…",
   "swap-broadcast": "Waiting for the source network to confirm…",
-  bridging: "Bridging to Filecoin and depositing… this takes about two minutes.",
+  bridging: "Bridging to Filecoin and depositing. This takes about two minutes.",
   verifying: "Confirming your Filecoin Pay balance…",
 };
-
-export function isPrivyEmbeddedWallet(wallet: Pick<ConnectedWallet, "walletClientType">): boolean {
-  return wallet.walletClientType === "privy";
-}
 
 export function describeWallet(wallet: Pick<ConnectedWallet, "address" | "walletClientType">): string {
   const name = isPrivyEmbeddedWallet(wallet)
@@ -101,8 +99,20 @@ export function parseUsdcAmount(amount: string, decimals: number): bigint | null
   }
 }
 
+/** Privy rejects its funding promise when the user simply closes the modal. */
+export function isFundingExit(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  return message === "" || /exit|clos|cancel|dismiss/i.test(message);
+}
+
 function pickDefaultWallet(wallets: readonly ConnectedWallet[]): ConnectedWallet | undefined {
   return wallets.find(isPrivyEmbeddedWallet) ?? wallets[0];
+}
+
+function formatTokenAmount(amount: bigint, decimals: number): string {
+  const [whole, fraction = ""] = formatUnits(amount, decimals).split(".");
+  const trimmed = fraction.replace(/0+$/, "").slice(0, 2);
+  return trimmed ? `${whole}.${trimmed}` : whole;
 }
 
 type FundWithUsdcDialogProps = {
@@ -115,6 +125,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   const { address: recipient } = useAccount();
   const { ready: walletsReady, wallets } = useWallets();
   const { connectWallet } = useConnectWallet();
+  const { addFunds } = useAddFunds();
   const { fundWallet } = useFundWallet();
   const { setTopUpActive } = useTopUpActivity();
   const { requestReview, reviewDialog } = useTransactionReview();
@@ -130,6 +141,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   const [transactionHash, setTransactionHash] = useState<Hash | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingSquidDeposit | null>(null);
+  const [isFunding, setIsFunding] = useState(false);
   const switchedEmbeddedWallet = useRef<ConnectedWallet | null>(null);
   const resumedHash = useRef<Hash | null>(null);
   const wasOpen = useRef(false);
@@ -214,7 +226,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     quote && balances ? getRequiredNativeBalance(quote, sourceChainId, APPROVAL_GAS_UNITS * balances.gasPrice) : null;
   const hasInsufficientUsdc = balances !== undefined && parsedAmount !== null && balances.token < parsedAmount;
   const hasInsufficientGas = balances !== undefined && requiredNative !== null && balances.native < requiredNative;
-  const isBusy = stage !== null;
+  const isBusy = stage !== null || isFunding;
   const canConfirm =
     !isBusy &&
     pending === null &&
@@ -251,17 +263,6 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     },
     [setTopUpActive],
   );
-
-  // Reads the latest handlers without making the effect below depend on them.
-  const resumeOnOpen = useEffectEvent((pendingDeposit: PendingSquidDeposit) => {
-    if (isBusy || resumedHash.current === pendingDeposit.transactionHash) return;
-    resumedHash.current = pendingDeposit.transactionHash;
-    void resumePendingDeposit(pendingDeposit);
-  });
-
-  useEffect(() => {
-    if (open && pending) resumeOnOpen(pending);
-  }, [open, pending]);
 
   const setStageWithHash = (nextStage: SquidDepositStage, hash?: Hash) => {
     setStage(nextStage);
@@ -344,6 +345,17 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
       handleFailure(failure, pendingDeposit.recipient);
     }
   };
+
+  // Reads the latest handlers without making the effect below depend on them.
+  const resumeOnOpen = useEffectEvent((pendingDeposit: PendingSquidDeposit) => {
+    if (isBusy || resumedHash.current === pendingDeposit.transactionHash) return;
+    resumedHash.current = pendingDeposit.transactionHash;
+    void resumePendingDeposit(pendingDeposit);
+  });
+
+  useEffect(() => {
+    if (open && pending) resumeOnOpen(pending);
+  }, [open, pending]);
 
   const dismissPendingDeposit = () => {
     if (!pending) return;
@@ -436,15 +448,45 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     }
   };
 
-  const fundEmbeddedWallet = async (asset: "USDC" | "native-currency", fundAmount: string) => {
-    if (!payingWallet || !sourceChain) return;
+  /** Privy's funding modal: card onramp, exchange, or a transfer from another wallet. */
+  const addUsdcToPrivyWallet = async () => {
+    if (!payingWallet || !sourceToken) return;
+    setIsFunding(true);
     try {
-      await fundWallet({ address: payingWallet.address, options: { chain: sourceChain, asset, amount: fundAmount } });
-    } catch (fundError) {
-      toast.error("Privy funding was not completed", {
-        description: fundError instanceof Error ? fundError.message : undefined,
+      await addFunds({
+        destination: { address: payingWallet.address, chain: `eip155:${sourceChainId}`, asset: sourceToken.token },
+        fiat: parsedAmount === null ? {} : { defaultAmount: amount },
+        crypto: {},
       });
+      toast.success("USDC is on its way to your Privy wallet");
+    } catch (fundError) {
+      if (!isFundingExit(fundError)) {
+        toast.error("Privy funding is unavailable", {
+          description: fundError instanceof Error ? fundError.message : undefined,
+        });
+      }
     } finally {
+      setIsFunding(false);
+      void balancesQuery.refetch();
+    }
+  };
+
+  const addGasToPrivyWallet = async () => {
+    if (!payingWallet || !sourceChain) return;
+    setIsFunding(true);
+    try {
+      await fundWallet({
+        address: payingWallet.address,
+        options: { chain: sourceChain, asset: "native-currency", amount: gasTopUpAmount },
+      });
+    } catch (fundError) {
+      if (!isFundingExit(fundError)) {
+        toast.error("Privy funding is unavailable", {
+          description: fundError instanceof Error ? fundError.message : undefined,
+        });
+      }
+    } finally {
+      setIsFunding(false);
       void balancesQuery.refetch();
     }
   };
@@ -453,12 +495,11 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     balances !== undefined && requiredNative !== null && requiredNative > balances.native
       ? requiredNative - balances.native
       : 0n;
-  const gasTopUpAmount = (() => {
-    const shortfall = Number(formatUnits(gasShortfall, 18));
-    return Math.max(shortfall * 2, Number(MINIMUM_GAS_TOP_UP)).toFixed(4);
-  })();
+  const gasTopUpAmount = Math.max(Number(formatUnits(gasShortfall, 18)) * 2, Number(MINIMUM_GAS_TOP_UP)).toFixed(4);
   const explorerUrl = sourceChain?.blockExplorers?.default.url;
   const activeStage = stage ?? (pending ? "bridging" : null);
+  const showEmptyPrivyWalletHint =
+    isEmbedded && balances !== undefined && balances.token === 0n && parsedAmount === null && !isBusy;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -466,7 +507,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
         <DialogHeader>
           <DialogTitle>Fund with USDC</DialogTitle>
           <DialogDescription>
-            USDC is swapped to USDFC through{" "}
+            Pay USDC from any connected wallet. It is swapped to USDFC via{" "}
             <a
               className='underline underline-offset-2'
               href='https://app.squidrouter.com/'
@@ -475,21 +516,20 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
             >
               Squid
             </a>{" "}
-            and deposited into your Filecoin Pay account in one transaction. Nothing needs to be done on Filecoin.
+            and deposited into your account in one transaction.
+            {recipient ? (
+              <span className='mt-1 block font-mono text-xs'>Account {formatAddress(recipient)}</span>
+            ) : null}
           </DialogDescription>
         </DialogHeader>
 
         <div className='grid gap-4 text-sm'>
-          <div className='grid gap-1'>
-            <span className='text-muted-foreground'>Deposit to</span>
-            <span className='font-mono break-all'>
-              {recipient ? `Filecoin Pay account ${recipient}` : "Connect a wallet"}
-            </span>
-          </div>
-
           {pending ? (
             <div className='grid gap-2 rounded-md border p-3' role='status'>
-              <p className='font-medium'>Deposit in progress</p>
+              <p className='inline-flex items-center gap-2 font-medium'>
+                {isBusy ? <Loader2 className='h-4 w-4 animate-spin' /> : null}
+                Deposit in progress
+              </p>
               <p className='text-muted-foreground'>
                 {activeStage ? STAGE_LABELS[activeStage] : "Waiting for the route to settle…"}
               </p>
@@ -524,66 +564,67 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
             </div>
           ) : (
             <>
-              <div className='grid gap-2'>
-                <Label htmlFor='fund-with-usdc-wallet'>Pay from</Label>
-                <Select
-                  disabled={isBusy || !walletsReady || wallets.length === 0}
-                  onValueChange={setPayingAddress}
-                  value={payingWallet?.address ?? ""}
-                >
-                  <SelectTrigger aria-label='Paying wallet' id='fund-with-usdc-wallet'>
-                    <SelectValue placeholder={walletsReady ? "Choose a wallet" : "Loading wallets…"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {wallets.map((wallet) => (
-                      <SelectItem key={wallet.address} value={wallet.address}>
-                        {describeWallet(wallet)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div>
-                  <Button
-                    aria-label='Connect another wallet'
-                    disabled={isBusy}
-                    onClick={() => connectWallet()}
-                    size='compact'
-                    type='button'
-                    variant='tertiary'
+              <div className='grid gap-4 sm:grid-cols-2'>
+                <div className='grid gap-2'>
+                  <div className='flex items-center justify-between gap-2'>
+                    <Label htmlFor='fund-with-usdc-wallet'>Pay from</Label>
+                    <button
+                      aria-label='Connect another wallet'
+                      className='text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50'
+                      disabled={isBusy}
+                      onClick={() => connectWallet()}
+                      type='button'
+                    >
+                      Connect another
+                    </button>
+                  </div>
+                  <Select
+                    disabled={isBusy || !walletsReady || wallets.length === 0}
+                    onValueChange={setPayingAddress}
+                    value={payingWallet?.address ?? ""}
                   >
-                    Connect another wallet
-                  </Button>
+                    <SelectTrigger aria-label='Paying wallet' className='w-full' id='fund-with-usdc-wallet'>
+                      <SelectValue placeholder={walletsReady ? "Choose a wallet" : "Loading wallets…"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {wallets.map((wallet) => (
+                        <SelectItem key={wallet.address} value={wallet.address}>
+                          {describeWallet(wallet)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
 
-              <div className='grid gap-2'>
-                <Label htmlFor='fund-with-usdc-network'>Pay on</Label>
-                <Select
-                  disabled={isBusy}
-                  onValueChange={(value) => {
-                    setSourceChainId(Number(value));
-                    setSourceTokenAddress("");
-                  }}
-                  value={String(sourceChainId)}
-                >
-                  <SelectTrigger aria-label='Source network' id='fund-with-usdc-network'>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SQUID_SOURCE_CHAINS.map((chain) => (
-                      <SelectItem key={chain.id} value={String(chain.id)}>
-                        {chain.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className='grid gap-2'>
+                  <Label htmlFor='fund-with-usdc-network'>Network</Label>
+                  <Select
+                    disabled={isBusy}
+                    onValueChange={(value) => {
+                      setSourceChainId(Number(value));
+                      setSourceTokenAddress("");
+                    }}
+                    value={String(sourceChainId)}
+                  >
+                    <SelectTrigger aria-label='Source network' className='w-full' id='fund-with-usdc-network'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SQUID_SOURCE_CHAINS.map((chain) => (
+                        <SelectItem key={chain.id} value={String(chain.id)}>
+                          {chain.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               {usdcTokens.length > 1 && (
                 <div className='grid gap-2'>
                   <Label htmlFor='fund-with-usdc-token'>USDC token</Label>
                   <Select disabled={isBusy} onValueChange={setSourceTokenAddress} value={sourceToken?.token ?? ""}>
-                    <SelectTrigger aria-label='USDC token' id='fund-with-usdc-token'>
+                    <SelectTrigger aria-label='USDC token' className='w-full' id='fund-with-usdc-token'>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -610,12 +651,13 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                   <Label htmlFor={amountInputId}>Amount ({sourceToken?.symbol ?? "USDC"})</Label>
                   {balances && sourceToken && (
                     <button
-                      className='text-xs text-muted-foreground underline underline-offset-2'
-                      disabled={isBusy}
+                      aria-label='Use full balance'
+                      className='text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50'
+                      disabled={isBusy || balances.token === 0n}
                       onClick={() => setAmount(formatUnits(balances.token, sourceToken.decimals))}
                       type='button'
                     >
-                      Balance: {formatUnits(balances.token, sourceToken.decimals)} (max)
+                      Balance {formatTokenAmount(balances.token, sourceToken.decimals)} · Max
                     </button>
                   )}
                 </div>
@@ -624,6 +666,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                   id={amountInputId}
                   min='0'
                   onChange={setAmount}
+                  placeholder='0.00'
                   step='any'
                   type='number'
                   value={amount}
@@ -636,23 +679,27 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                     Not enough {sourceToken?.symbol ?? "USDC"} in this wallet.
                   </p>
                 )}
-                {isEmbedded && sourceChain && (
-                  <div>
-                    <Button
-                      aria-label='Add USDC with Privy'
-                      disabled={isBusy}
-                      onClick={() =>
-                        void fundEmbeddedWallet("USDC", parsedAmount === null ? DEFAULT_FUND_USDC_AMOUNT : amount)
-                      }
-                      size='compact'
-                      type='button'
-                      variant='tertiary'
-                    >
-                      Add USDC to your Privy wallet
-                    </Button>
-                  </div>
-                )}
               </div>
+
+              {isEmbedded && sourceToken && (
+                <div className='flex flex-wrap items-center justify-between gap-2 rounded-md border p-3'>
+                  <span className='text-muted-foreground'>
+                    {showEmptyPrivyWalletHint
+                      ? `Your Privy wallet holds no ${sourceToken.symbol} on ${sourceChain?.name ?? "this network"} yet.`
+                      : "Top up your Privy wallet by card, exchange, or another wallet."}
+                  </span>
+                  <Button
+                    aria-label='Add USDC with Privy'
+                    disabled={isBusy}
+                    onClick={() => void addUsdcToPrivyWallet()}
+                    size='compact'
+                    type='button'
+                    variant='tertiary'
+                  >
+                    Add USDC
+                  </Button>
+                </div>
+              )}
 
               {quoteQuery.isFetching && !quote && (
                 <p className='inline-flex items-center gap-2 text-muted-foreground'>
@@ -670,32 +717,25 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                     <span className='text-muted-foreground'>You receive at least</span>
                     <span className='font-medium'>{formatUsdfcAmount(quote.minimumDestinationAmount)} USDFC</span>
                   </div>
-                  <div className='flex items-center justify-between gap-2'>
-                    <span className='text-muted-foreground'>Rate</span>
+                  <div className='flex items-center justify-between gap-2 text-xs text-muted-foreground'>
                     <span>
-                      1 {sourceToken.symbol} ≈ {rate.toFixed(4)} USDFC
-                      {quote.priceImpactPercent ? ` (price impact ${quote.priceImpactPercent}%)` : ""}
+                      1 {sourceToken.symbol} ≈ {rate.toFixed(3)} USDFC
+                      {quote.priceImpactPercent ? ` · impact ${quote.priceImpactPercent}%` : ""}
+                    </span>
+                    <span>
+                      {quote.fees.length > 0
+                        ? `fees ${quote.fees.map((fee) => (fee.amountUsd ? `$${fee.amountUsd}` : fee.name)).join(" + ")}`
+                        : "no route fees"}
+                      {quote.estimatedSeconds !== undefined
+                        ? ` · ~${Math.max(1, Math.round(quote.estimatedSeconds / 60))} min`
+                        : ""}
                     </span>
                   </div>
-                  {quote.fees.length > 0 && (
-                    <div className='flex items-center justify-between gap-2'>
-                      <span className='text-muted-foreground'>Route fees</span>
-                      <span>
-                        {quote.fees.map((fee) => `${fee.name}${fee.amountUsd ? ` $${fee.amountUsd}` : ""}`).join(", ")}
-                      </span>
-                    </div>
-                  )}
-                  {quote.estimatedSeconds !== undefined && (
-                    <div className='flex items-center justify-between gap-2'>
-                      <span className='text-muted-foreground'>Estimated time</span>
-                      <span>about {Math.max(1, Math.round(quote.estimatedSeconds / 60))} min</span>
-                    </div>
-                  )}
                   {isUnfavorableRate(rate) && (
                     <p className='mt-1 inline-flex items-start gap-2 text-amber-700'>
                       <AlertCircle className='mt-0.5 h-4 w-4 shrink-0' />
                       <span>
-                        This route returns noticeably less than 1 USDFC per {sourceToken.symbol}. Only continue if the
+                        This route returns noticeably less than 1 USDFC per {sourceToken.symbol}. Continue only if the
                         rate is acceptable.
                       </span>
                     </p>
@@ -704,24 +744,22 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
               )}
 
               {hasInsufficientGas && sourceChain && (
-                <div className='grid gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-800'>
-                  <p>
-                    This wallet needs about {formatUnits(requiredNative ?? 0n, 18)} {nativeSymbol} on {sourceChain.name}{" "}
-                    for gas and route fees.
-                  </p>
+                <div className='flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-800'>
+                  <span>
+                    Needs about {formatTokenAmount(requiredNative ?? 0n, 18)} {nativeSymbol} on {sourceChain.name} for
+                    gas and fees.
+                  </span>
                   {isEmbedded && (
-                    <div>
-                      <Button
-                        aria-label='Add gas with Privy'
-                        disabled={isBusy}
-                        onClick={() => void fundEmbeddedWallet("native-currency", gasTopUpAmount)}
-                        size='compact'
-                        type='button'
-                        variant='tertiary'
-                      >
-                        Add {gasTopUpAmount} {nativeSymbol} with Privy
-                      </Button>
-                    </div>
+                    <Button
+                      aria-label='Add gas with Privy'
+                      disabled={isBusy}
+                      onClick={() => void addGasToPrivyWallet()}
+                      size='compact'
+                      type='button'
+                      variant='tertiary'
+                    >
+                      Add {gasTopUpAmount} {nativeSymbol}
+                    </Button>
                   )}
                 </div>
               )}
@@ -756,7 +794,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
               type='button'
               variant='primary'
             >
-              {isBusy ? (
+              {stage ? (
                 <span className='inline-flex items-center gap-2'>
                   <Loader2 className='h-4 w-4 animate-spin' />
                   Funding…

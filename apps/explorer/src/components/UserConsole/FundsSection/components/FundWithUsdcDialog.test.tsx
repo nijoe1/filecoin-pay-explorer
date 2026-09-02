@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   describeWallet,
   FundWithUsdcDialog,
+  isFundingExit,
   isPrivyEmbeddedWallet,
   parseUsdcAmount,
   parseWalletChainId,
@@ -14,6 +15,7 @@ const EMBEDDED = "0x1111111111111111111111111111111111111111";
 const EXTERNAL = "0x3333333333333333333333333333333333333333";
 
 const privy = vi.hoisted(() => ({
+  addFunds: vi.fn(),
   connectWallet: vi.fn(),
   fundWallet: vi.fn(),
   wallets: [] as { address: string; walletClientType: string }[],
@@ -25,17 +27,21 @@ vi.mock("wagmi", () => ({
   usePublicClient: () => undefined,
 }));
 vi.mock("@privy-io/react-auth", () => ({
+  useAddFunds: () => ({ addFunds: privy.addFunds }),
   useConnectWallet: () => ({ connectWallet: privy.connectWallet }),
   useFundWallet: () => ({ fundWallet: privy.fundWallet }),
   useWallets: () => ({ ready: true, wallets: privy.wallets }),
 }));
+const USDC_TOKENS = [
+  { chainId: 8453, token: "0x4444444444444444444444444444444444444444", symbol: "USDC", decimals: 6 },
+];
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: () => ({
-    data: undefined,
+  useQuery: ({ queryKey }: { queryKey: unknown[] }) => ({
+    data: queryKey[0] === "squid-usdc-tokens" ? USDC_TOKENS : undefined,
     error: null,
     isError: false,
     isFetching: false,
-    isPending: true,
+    isPending: queryKey[0] !== "squid-usdc-tokens",
     refetch: vi.fn(),
   }),
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
@@ -116,6 +122,12 @@ describe("wallet helpers", () => {
     expect(parseUsdcAmount("0", 6)).toBeNull();
     expect(parseUsdcAmount("abc", 6)).toBeNull();
     expect(parseUsdcAmount("", 6)).toBeNull();
+  });
+
+  it("treats a closed Privy funding modal as an exit rather than an error", () => {
+    expect(isFundingExit(new Error("User exited the funding flow"))).toBe(true);
+    expect(isFundingExit(undefined)).toBe(true);
+    expect(isFundingExit(new Error("Funding is not enabled for this app"))).toBe(false);
   });
 });
 

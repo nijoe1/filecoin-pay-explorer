@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useConnection } from "wagmi";
+import { useUsdcFundingLaunch } from "@/components/UserConsole/FundingLaunchContext";
 import { getChain } from "@/constants/chains";
 import useSynapse from "@/hooks/useSynapse";
 import { useTopUpActivity } from "../TopUpActivityContext";
@@ -19,6 +20,11 @@ interface TopUpDialogControllerProps {
 export function TopUpDialogController({ accountId, children, showTrigger = false }: TopUpDialogControllerProps) {
   const [open, setOpen] = useState(false);
   const [usdcOpen, setUsdcOpen] = useState(false);
+  // Only the instance that shows the standalone trigger (no account yet)
+  // answers launch requests; otherwise the funds section owns the dialog.
+  useUsdcFundingLaunch(() => {
+    if (showTrigger) setUsdcOpen(true);
+  });
   const [hasSavedAcquisition, setHasSavedAcquisition] = useState(false);
   const [recoveryRevision, setRecoveryRevision] = useState(0);
   const didAutoOpenSavedAcquisition = useRef(false);
