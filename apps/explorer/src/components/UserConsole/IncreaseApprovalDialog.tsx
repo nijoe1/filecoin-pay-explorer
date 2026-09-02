@@ -50,6 +50,7 @@ export const IncreaseApprovalDialog: React.FC<IncreaseApprovalDialogProps> = ({ 
     if (!open) {
       setLockupIncrease("");
       setRateIncrease("");
+      setMaxLockupPeriodIncrease("");
       setIsUnlimited(false);
     }
   }, [open]);
