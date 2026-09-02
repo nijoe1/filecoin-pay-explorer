@@ -1,56 +1,37 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { useConnection } from "wagmi";
 import SessionKeysSection from "@/components/UserConsole/SessionKeysSection";
-import type { Network } from "@/types";
-import {
-  type AuthorizeParamError,
-  parseAuthorizeParam,
-  parseNetworkParam,
-  parseScopesParam,
-} from "@/utils/authorizeParam";
+import { useConsumedSearchParams } from "@/hooks/useConsumedSearchParams";
+import { parseAuthorizeParam, parseNetworkParam, parseScopesParam } from "@/utils/authorizeParam";
 import { getNetworkFromChainId } from "@/utils/network";
-import type { ScopeId } from "@/utils/sessionKeys";
 
 const SessionKeysPage = () => {
   const { address, chainId } = useConnection();
-
-  // The layout keeps this page unmounted until the wallet is
-  // connected, so capture the params ONCE on mount, then strip them from the
-  // URL — the address bar shouldn't keep replaying an old authorization
-  // request across refreshes and shares.
-  const [prefillAddress, setPrefillAddress] = useState<`0x${string}` | null>(null);
-  const [prefillScopes, setPrefillScopes] = useState<ScopeId[] | null>(null);
-  const [prefillNetwork, setPrefillNetwork] = useState<Network | null>(null);
-  const [prefillError, setPrefillError] = useState<AuthorizeParamError | null>(null);
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (!params.has("authorize") && !params.has("scopes")) return;
-    const requested = parseAuthorizeParam(params.get("authorize"));
-    // Scopes only mean something as part of a valid authorization request.
-    if (requested && "address" in requested) {
-      setPrefillAddress(requested.address);
-      setPrefillScopes(parseScopesParam(params.get("scopes")));
-      // the section refuses to prefill while the wallet is connected to a different chain.
-      setPrefillNetwork(parseNetworkParam(params.get("network")));
-    } else if (requested) {
-      setPrefillError(requested.error);
+  const link = useConsumedSearchParams(["authorize", "scopes", "network"]);
+  const request = useMemo(() => {
+    const requested = link ? parseAuthorizeParam(link.get("authorize")) : null;
+    if (!link || !requested) return null;
+    // Scopes and network only mean something as part of a usable request.
+    if ("address" in requested) {
+      return {
+        address: requested.address,
+        scopes: parseScopesParam(link.get("scopes")),
+        network: parseNetworkParam(link.get("network")),
+        error: null,
+      };
     }
-    params.delete("authorize");
-    params.delete("scopes");
-    params.delete("network");
-    const query = params.toString();
-    window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
-  }, []);
+    return { address: null, scopes: null, network: null, error: requested.error };
+  }, [link]);
 
   return (
     <SessionKeysSection
       network={getNetworkFromChainId(chainId)}
       account={address}
-      prefillAddress={prefillAddress}
-      prefillScopes={prefillScopes}
-      prefillNetwork={prefillNetwork}
-      prefillError={prefillError}
+      prefillAddress={request?.address}
+      prefillScopes={request?.scopes}
+      prefillNetwork={request?.network}
+      prefillError={request?.error}
     />
   );
 };
