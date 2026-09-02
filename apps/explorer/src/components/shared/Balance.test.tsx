@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
-import { act, create } from "react-test-renderer";
+import { act, create, type ReactTestInstance } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Balance from "./Balance";
 
 const ADDRESS = "0x1111111111111111111111111111111111111111";
+const SHORT_ADDRESS = "0x1111...1111";
 
 const privy = vi.hoisted(() => ({
   authenticated: false,
@@ -40,24 +41,34 @@ vi.mock("@/components/UserConsole/TransactionReview", () => ({
 vi.mock("@filecoin-pay/ui/components/button", () => ({
   Button: ({ children }: { children: ReactNode }) => <button type='button'>{children}</button>,
 }));
+vi.mock("@filecoin-pay/ui/components/skeleton", () => ({ Skeleton: () => <span data-skeleton /> }));
 vi.mock("@filecoin-pay/ui/components/dropdown-menu", () => ({
   DropdownMenu: ({ children }: { children: ReactNode }) => children,
   DropdownMenuContent: ({ children }: { children: ReactNode }) => children,
   DropdownMenuGroup: ({ children }: { children: ReactNode }) => children,
-  DropdownMenuItem: ({ children, onClick }: { children: ReactNode; onClick?: () => void }) => (
+  DropdownMenuItem: ({ children, onClick }: { children: ReactNode; onClick?: (e: unknown) => void }) => (
     <button data-menu-item onClick={onClick} type='button'>
       {children}
     </button>
   ),
-  DropdownMenuLabel: ({ children }: { children: ReactNode }) => children,
+  DropdownMenuLabel: ({ children }: { children: ReactNode }) => <span data-menu-label>{children}</span>,
   DropdownMenuSeparator: () => null,
   DropdownMenuTrigger: ({ children }: { children: ReactNode }) => children,
 }));
 
+const stringChildren = (node: ReactTestInstance) =>
+  node
+    .findAllByType("span")
+    .map((span) =>
+      [span.props.children]
+        .flat()
+        .filter((c): c is string => typeof c === "string")
+        .join("")
+        .trim(),
+    )
+    .filter(Boolean);
 const menuItem = (renderer: ReturnType<typeof create>, label: string) =>
-  renderer.root.find(
-    (node) => node.type === "button" && node.findAllByType("span").some((span) => span.props.children === label),
-  );
+  renderer.root.find((node) => node.props["data-menu-item"] === true && stringChildren(node).includes(label));
 const menuLabels = (renderer: ReturnType<typeof create>) =>
   renderer.root.findAllByProps({ "data-menu-item": true }).map((item) =>
     item
@@ -65,6 +76,8 @@ const menuLabels = (renderer: ReturnType<typeof create>) =>
       .map((span) => span.props.children)
       .find((c) => typeof c === "string"),
   );
+const groupLabels = (renderer: ReturnType<typeof create>) =>
+  renderer.root.findAllByProps({ "data-menu-label": true }).map((label) => label.props.children);
 
 async function render() {
   let renderer!: ReturnType<typeof create>;
@@ -76,20 +89,40 @@ async function render() {
 
 beforeEach(() => {
   wallet.chainId = 314;
+  vi.clearAllMocks();
 });
 
-describe("Balance funding menu", () => {
-  it("orders the menu as identity, funding, settings, then the way out", async () => {
+describe("Balance wallet menu", () => {
+  it("keeps the trigger compact: short address and the two balances without unit text", async () => {
     const renderer = await render();
-    expect(JSON.stringify(renderer.toJSON())).toContain("MetaMask wallet");
+    const trigger = renderer.root.find((node) => node.type === "button" && !("data-menu-item" in node.props));
+    expect(stringChildren(trigger)).toEqual([SHORT_ADDRESS, "0.00", "0"]);
+    await act(async () => renderer.unmount());
+  });
+
+  it("orders the menu as address, other wallets, funding, settings, then the way out", async () => {
+    const renderer = await render();
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("MetaMask wallet");
     expect(menuLabels(renderer)).toEqual([
-      "Copy address",
+      SHORT_ADDRESS,
+      "Connect another wallet",
       "Add funds",
       "Log in to buy with card",
-      "Connect another wallet",
       "Add USDFC to wallet",
       "Disconnect",
     ]);
+    expect(groupLabels(renderer)).toEqual(["Funding", "Settings"]);
+    await act(async () => renderer.unmount());
+  });
+
+  it("copies the full address when the address row is clicked", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(globalThis.navigator, "clipboard", { value: { writeText }, configurable: true });
+    const renderer = await render();
+    await act(async () => {
+      await menuItem(renderer, SHORT_ADDRESS).props.onClick({ preventDefault: vi.fn() });
+    });
+    expect(writeText).toHaveBeenCalledWith(ADDRESS);
     await act(async () => renderer.unmount());
   });
 
@@ -107,10 +140,16 @@ describe("Balance funding menu", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("hides Add funds where USDC funding cannot deposit", async () => {
+  it("drops the whole Funding group where USDC funding cannot deposit, keeping the other wallets reachable", async () => {
     wallet.chainId = 314159;
     const renderer = await render();
-    expect(() => menuItem(renderer, "Add funds")).toThrow();
+    expect(menuLabels(renderer)).toEqual([
+      SHORT_ADDRESS,
+      "Connect another wallet",
+      "Add USDFC to wallet",
+      "Disconnect",
+    ]);
+    expect(groupLabels(renderer)).toEqual(["Settings"]);
     await act(async () => renderer.unmount());
   });
 });

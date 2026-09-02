@@ -36,17 +36,19 @@ import useSynapse from "@/hooks/useSynapse";
 import { formatAddress } from "@/utils/formatter";
 
 /**
- * The wallet pill and its menu: who the console is acting as, how to add
- * funds, wallet settings, and last of all the way out.
+ * The wallet pill and its menu: the address (click to copy) and the other
+ * wallets, how to add funds, wallet settings, and last of all the way out.
  */
 const Balance = () => {
   const { constants } = useSynapse();
-  const { address, chainId, connector } = useAccount();
+  const { address, chainId } = useAccount();
   const { disconnect } = useDisconnect();
-  const { authenticated, logout, user } = usePrivy();
+  const { authenticated, logout } = usePrivy();
   const { connectWallet } = useConnectWallet();
   const { exportWallet } = useExportWallet();
   const { openUsdcFunding } = useFundingLaunch();
+  // The card onramp delivers USDC on Base for the same mainnet flow, so the
+  // whole Funding group goes away where USDC funding cannot deposit.
   const canFundWithUsdc = isUsdcFundingAvailable(chainId);
   const card = useCardPurchase({ address, onPurchased: openUsdcFunding });
   const isEmbeddedSigner = useIsEmbeddedSigner();
@@ -68,12 +70,7 @@ const Balance = () => {
   const usdfcBalanceFormatted = usdfcBalance ? Number(formatEther(usdfcBalance)).toFixed(2) : "0";
   const tFilBalanceFormatted = tFilBalance ? Number(formatEther(tFilBalance.value)).toFixed(2) : "0";
   const isLoading = isLoadingtFilBalance || isLoadingUSDFCBalance;
-
-  // Who the console acts as: the login for Privy sessions, the wallet app otherwise.
-  const loginName = user?.email?.address ?? user?.google?.email ?? user?.google?.name;
-  const identity = authenticated
-    ? `Logged in as ${loginName ?? "a Privy user"}`
-    : `${connector?.name ?? "External"} wallet`;
+  const shortAddress = address ? formatAddress(address) : "";
 
   const copyToClipboard = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -117,56 +114,54 @@ const Balance = () => {
             {isLoading ? (
               <>
                 <Skeleton className='h-4 w-24' />
-                <Skeleton className='h-4 w-14' />
-                <Skeleton className='h-4 w-16' />
+                <Skeleton className='h-4 w-12' />
+                <Skeleton className='h-4 w-12' />
               </>
             ) : (
               <>
-                <span className='font-mono text-sm'>{address && formatAddress(address)}</span>
-                {/* Balances live in the dashboard too, so the smallest screens keep only the address. */}
-                <span className='hidden items-center gap-1.5 text-sm sm:flex'>
-                  <FilecoinLogo className='size-4' /> {tFilBalanceFormatted} FIL
+                <span className='font-mono text-sm'>{shortAddress}</span>
+                <span className='flex items-center gap-1.5 text-sm'>
+                  <FilecoinLogo className='size-4' /> {tFilBalanceFormatted}
                 </span>
-                <span className='hidden items-center gap-1.5 text-sm sm:flex'>
-                  <USDFCLogo className='size-4' /> {usdfcBalanceFormatted} USDFC
+                <span className='flex items-center gap-1.5 text-sm'>
+                  <USDFCLogo className='size-4' /> {usdfcBalanceFormatted}
                 </span>
               </>
             )}
           </div>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className='w-72' align='start'>
-        <DropdownMenuLabel className='grid gap-0.5 py-2 font-normal'>
-          <span className='text-sm font-medium text-foreground'>{identity}</span>
-          <span className='font-mono text-xs text-muted-foreground'>{address}</span>
-        </DropdownMenuLabel>
+      <DropdownMenuContent className='w-64' align='start'>
         <DropdownMenuItem
           onSelect={(e) => e.preventDefault()}
           onClick={copyToClipboard}
           className='cursor-pointer py-2'
         >
-          {copied ? <Check className='text-primary' /> : <Copy />}
-          <span className='text-base'>{copied ? "Copied" : "Copy address"}</span>
+          <Copy />
+          <span className='font-mono text-base'>{shortAddress}</span>
+          {copied ? <Check className='ml-auto text-primary' /> : null}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => connectWallet()} className='cursor-pointer py-2'>
+          <PlugZap />
+          <span className='text-base'>Connect another wallet</span>
         </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuLabel className='py-2 text-muted-foreground'>Funding</DropdownMenuLabel>
-          {canFundWithUsdc ? (
-            <DropdownMenuItem onClick={openUsdcFunding} className='cursor-pointer py-2'>
-              <Coins />
-              <span className='text-base'>Add funds</span>
-            </DropdownMenuItem>
-          ) : null}
-          <DropdownMenuItem onClick={() => void card.buyWithCard()} className='cursor-pointer py-2'>
-            <CreditCard />
-            <span className='text-base'>{card.label}</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => connectWallet()} className='cursor-pointer py-2'>
-            <PlugZap />
-            <span className='text-base'>Connect another wallet</span>
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
+        {canFundWithUsdc ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className='py-2 text-muted-foreground'>Funding</DropdownMenuLabel>
+              <DropdownMenuItem onClick={openUsdcFunding} className='cursor-pointer py-2'>
+                <Coins />
+                <span className='text-base'>Add funds</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void card.buyWithCard()} className='cursor-pointer py-2'>
+                <CreditCard />
+                <span className='text-base'>{card.label}</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </>
+        ) : null}
 
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
