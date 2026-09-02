@@ -33,3 +33,37 @@ export function describeStage(
       return "Confirming your Filecoin Pay balance…";
   }
 }
+
+export type ProgressStep = { label: string; state: "done" | "current" | "upcoming" };
+
+const PROGRESS_ORDER: UiStage[] = [
+  "preparing",
+  "approving",
+  "swap-requested",
+  "swap-broadcast",
+  "bridging",
+  "verifying",
+];
+const PROGRESS_LABELS: Record<UiStage, string> = {
+  preparing: "Prepare the route",
+  approving: "Approve USDC",
+  "swap-requested": "Confirm the swap",
+  "swap-broadcast": "Source network confirms",
+  bridging: "Bridge and deposit",
+  verifying: "Balance confirmed",
+};
+
+/**
+ * The deposit as a timeline. The approval step appears only on a first
+ * purchase, which is the only time the wallet asks for it.
+ */
+export function describeProgress(stage: UiStage, { hasApproved }: { hasApproved: boolean }): ProgressStep[] {
+  const current = PROGRESS_ORDER.indexOf(stage);
+  return PROGRESS_ORDER.filter((step) => step !== "approving" || hasApproved || stage === "approving").map((step) => {
+    const index = PROGRESS_ORDER.indexOf(step);
+    return {
+      label: PROGRESS_LABELS[step],
+      state: index < current ? "done" : index === current ? "current" : "upcoming",
+    };
+  });
+}

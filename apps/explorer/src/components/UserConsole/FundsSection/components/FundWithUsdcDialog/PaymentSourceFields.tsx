@@ -12,6 +12,8 @@ import { describeWallet } from "./wallets";
 export function PaymentSourceFields({
   areWalletsReady,
   isBusy,
+  isCollapsed,
+  onExpand,
   onConnectAnother,
   onPayingAddressChange,
   onSourceChainChange,
@@ -26,7 +28,10 @@ export function PaymentSourceFields({
 }: {
   areWalletsReady: boolean;
   isBusy: boolean;
+  /** One summary line with a Change action, until the user wants to pick differently. */
+  isCollapsed: boolean;
   onConnectAnother: () => void;
+  onExpand: () => void;
   onPayingAddressChange: (address: string) => void;
   onSourceChainChange: (chainId: number) => void;
   onSourceTokenChange: (token: string) => void;
@@ -38,6 +43,31 @@ export function PaymentSourceFields({
   usdcTokens: SourceToken[];
   wallets: ConnectedWallet[];
 }) {
+  if (isCollapsed && payingWallet && sourceToken) {
+    return (
+      <div className='flex flex-wrap items-center justify-between gap-2 rounded-md border p-3'>
+        <span>
+          <span className='text-muted-foreground'>From </span>
+          {describeWallet(payingWallet)}
+          <span className='text-muted-foreground'> on </span>
+          {sourceChain?.name ?? "this network"}
+          {usdcTokens.length > 1 ? <span className='text-muted-foreground'> · {sourceToken.symbol}</span> : null}
+        </span>
+        <Button
+          aria-label='Change payment source'
+          disabled={isBusy}
+          onClick={onExpand}
+          size='compact'
+          type='button'
+          variant='ghost'
+        >
+          Change
+        </Button>
+      </div>
+    );
+  }
+  // Only when two listed tokens share a symbol does the address tell them apart.
+  const showTokenAddresses = new Set(usdcTokens.map((token) => token.symbol)).size < usdcTokens.length;
   return (
     <>
       <div className='grid gap-4 sm:grid-cols-2'>
@@ -104,7 +134,7 @@ export function PaymentSourceFields({
             <SelectContent>
               {usdcTokens.map((token) => (
                 <SelectItem key={token.token} value={token.token}>
-                  {token.symbol} ({formatAddress(token.token)})
+                  {showTokenAddresses ? `${token.symbol} (${formatAddress(token.token)})` : token.symbol}
                 </SelectItem>
               ))}
             </SelectContent>

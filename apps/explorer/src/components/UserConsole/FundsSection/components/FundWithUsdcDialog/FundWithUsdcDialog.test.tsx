@@ -35,7 +35,12 @@ const USDC_TOKENS = [
 ];
 vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: unknown[] }) => ({
-    data: queryKey[0] === "squid-usdc-tokens" ? USDC_TOKENS : undefined,
+    data:
+      queryKey[0] === "squid-usdc-tokens"
+        ? USDC_TOKENS
+        : queryKey[0] === "squid-deposit-balances"
+          ? { token: 0n, native: 0n, gasPrice: 1n }
+          : undefined,
     error: null,
     isError: false,
     isFetching: false,
@@ -111,6 +116,11 @@ describe("FundWithUsdcDialog", () => {
       renderer = create(<FundWithUsdcDialog accountId='account' onOpenChange={() => undefined} open />);
     });
 
+    // The source shows as a summary line until the user asks to change it.
+    expect(renderer.root.findAllByType("option")).toHaveLength(0);
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Change payment source" }).props.onClick();
+    });
     const optionLabels = renderer.root.findAllByType("option").map((option) => option.props.children);
     expect(optionLabels).toContain("Privy wallet (0x1111...1111)");
     expect(optionLabels).toContain("Metamask (0x3333...3333)");
@@ -121,7 +131,8 @@ describe("FundWithUsdcDialog", () => {
     });
     expect(privy.connectWallet).toHaveBeenCalledOnce();
 
-    expect(renderer.root.findByProps({ "aria-label": "Pay with USDC" }).props.disabled).toBe(true);
+    expect(renderer.root.findByProps({ "aria-label": "Review payment" }).props.disabled).toBe(true);
+    expect(renderer.root.findAllByProps({ "aria-label": "Pay with USDC" })).toHaveLength(0);
     // The embedded wallet is the default payer, so Privy's USDC funding is offered.
     expect(renderer.root.findAllByProps({ "aria-label": "Add USDC with Privy" }, { deep: false })).toHaveLength(1);
     await act(async () => {

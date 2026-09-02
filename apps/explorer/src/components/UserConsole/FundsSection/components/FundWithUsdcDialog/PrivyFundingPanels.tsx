@@ -6,30 +6,27 @@ import { formatTokenAmount, NATIVE_FRACTION_DIGITS } from "./wallets";
 export function TopUpWalletPanel({
   hasPrivyLogin,
   isBusy,
+  message,
   onBuyWithCard,
   onLogin,
   onTransfer,
-  payerLabel,
-  showEmptyWalletHint,
-  sourceNetworkName,
-  tokenSymbol,
+  tone,
 }: {
   hasPrivyLogin: boolean;
   isBusy: boolean;
+  message: string;
   onBuyWithCard: () => void;
   onLogin: () => void;
   onTransfer: () => void;
-  payerLabel: string;
-  showEmptyWalletHint: boolean;
-  sourceNetworkName: string;
-  tokenSymbol: string;
+  tone: "muted" | "destructive";
 }) {
   return (
     <div className='flex flex-wrap items-center justify-between gap-2 rounded-md border p-3'>
-      <span className='text-muted-foreground'>
-        {showEmptyWalletHint
-          ? `${payerLabel[0].toUpperCase()}${payerLabel.slice(1)} holds no ${tokenSymbol} on ${sourceNetworkName} yet.`
-          : `Add USDC to ${payerLabel}.`}
+      <span
+        className={tone === "destructive" ? "text-destructive" : "text-muted-foreground"}
+        role={tone === "destructive" ? "alert" : undefined}
+      >
+        {message}
       </span>
       <span className='flex flex-wrap gap-2'>
         <Button
@@ -79,13 +76,14 @@ export function GasShortfallPanel({
   onLogin: () => void;
   requiredNative: bigint;
 }) {
+  const required = formatTokenAmount(requiredNative, 18, NATIVE_FRACTION_DIGITS);
+  const needed = required === "0" ? `less than ${1 / 10 ** NATIVE_FRACTION_DIGITS}` : `about ${required}`;
   return (
     <div className='flex flex-wrap items-center justify-between gap-2 rounded-md border p-3'>
       <span className='inline-flex items-start gap-2'>
         <AlertCircle aria-hidden className='mt-0.5 h-4 w-4 shrink-0 text-destructive' />
         <span>
-          Needs about {formatTokenAmount(requiredNative, 18, NATIVE_FRACTION_DIGITS)} {nativeSymbol} on {networkName}{" "}
-          for gas and fees.
+          Needs {needed} {nativeSymbol} on {networkName} for gas and fees.
         </span>
       </span>
       <Button

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeStage } from "./stages";
+import { describeProgress, describeStage } from "./stages";
 
 describe("describeStage", () => {
   it("describes every deposit stage and numbers the approval and swap signatures", () => {
@@ -26,5 +26,29 @@ describe("describeStage", () => {
     expect(describeStage("swap-requested", { hasApproved: false, isEmbedded: false })).toBe(
       "Confirm the swap in your wallet",
     );
+  });
+});
+
+describe("describeProgress", () => {
+  it("lists the steps in order, showing the approval only when it happened", () => {
+    expect(describeProgress("bridging", { hasApproved: true })).toEqual([
+      { label: "Prepare the route", state: "done" },
+      { label: "Approve USDC", state: "done" },
+      { label: "Confirm the swap", state: "done" },
+      { label: "Source network confirms", state: "done" },
+      { label: "Bridge and deposit", state: "current" },
+      { label: "Balance confirmed", state: "upcoming" },
+    ]);
+    expect(describeProgress("swap-requested", { hasApproved: false }).map((step) => step.label)).toEqual([
+      "Prepare the route",
+      "Confirm the swap",
+      "Source network confirms",
+      "Bridge and deposit",
+      "Balance confirmed",
+    ]);
+    expect(describeProgress("approving", { hasApproved: false })[1]).toEqual({
+      label: "Approve USDC",
+      state: "current",
+    });
   });
 });

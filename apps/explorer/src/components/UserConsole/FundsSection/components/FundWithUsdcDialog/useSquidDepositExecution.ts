@@ -187,9 +187,9 @@ export function useSquidDepositExecution({
     if (open && pendingDeposit) resumeOnOpen(pendingDeposit);
   }, [open, pendingDeposit]);
 
+  /** Stops following the deposit; the panel asks the user to confirm first. */
   const dismissPendingDeposit = () => {
     if (!pendingDeposit) return;
-    if (!window.confirm("Only dismiss this after checking the transaction on the source network explorer.")) return;
     try {
       clearPendingSquidDeposit(window.localStorage, pendingDeposit.recipient);
     } catch {

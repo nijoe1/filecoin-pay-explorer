@@ -44,7 +44,6 @@ const storage = {
   removeItem: (key: string) => void items.delete(key),
   setItem: (key: string, value: string) => void items.set(key, value),
 };
-const confirmDialog = vi.fn(() => true);
 
 const switchChain = vi.fn(async (_chainId: number) => undefined);
 const wallet = {
@@ -105,7 +104,7 @@ async function render(props: HookProps = baseProps()) {
 
 beforeEach(() => {
   items.clear();
-  vi.stubGlobal("window", { confirm: confirmDialog, dispatchEvent: vi.fn(), localStorage: storage });
+  vi.stubGlobal("window", { dispatchEvent: vi.fn(), localStorage: storage });
 });
 
 afterEach(() => {
@@ -238,7 +237,7 @@ describe("useSquidDepositExecution", () => {
     expect(items.size).toBe(0);
   });
 
-  it("dismisses a stored deposit only after the user confirms", async () => {
+  it("dismisses a stored deposit on request", async () => {
     savePendingSquidDeposit(storage, {
       recipient: RECIPIENT,
       owner: OWNER,
@@ -253,10 +252,7 @@ describe("useSquidDepositExecution", () => {
     fns.awaitSettlement.mockImplementation(() => new Promise(() => undefined));
     await render();
 
-    confirmDialog.mockReturnValueOnce(false);
-    act(() => latest.dismissPendingDeposit());
     expect(items.size).toBe(1);
-
     act(() => latest.dismissPendingDeposit());
     expect({ stored: items.size, pending: latest.pendingDeposit }).toEqual({ stored: 0, pending: null });
   });

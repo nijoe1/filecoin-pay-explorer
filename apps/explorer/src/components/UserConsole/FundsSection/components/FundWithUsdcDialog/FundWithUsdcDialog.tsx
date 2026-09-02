@@ -39,17 +39,17 @@ import { useTransactionReview } from "@/components/UserConsole/TransactionReview
 import { mainnet, SQUID_SOURCE_CHAINS } from "@/constants/chains";
 import { formatAddress } from "@/utils/formatter";
 import { createDialogCloseGuard } from "../../data/dialog-close-guard";
+import { formatUsdfcAmount } from "../../data/funding-runway";
 import { readSquidIntegratorId } from "../../data/squid-integrator";
 import { squidFetch } from "../../data/squid-quote";
+import { DepositProgress } from "./DepositProgress";
 import { PaymentSourceFields } from "./PaymentSourceFields";
 import { PendingDepositPanel } from "./PendingDepositPanel";
 import { GasShortfallPanel, TopUpWalletPanel } from "./PrivyFundingPanels";
 import { QuoteSummary } from "./QuoteSummary";
-import { describeStage } from "./stages";
-import { TransactionLink } from "./TransactionLink";
 import { useSquidDepositExecution } from "./useSquidDepositExecution";
 import { useSquidDepositQuote } from "./useSquidDepositQuote";
-import { formatTokenAmount, pickDefaultWallet } from "./wallets";
+import { describeWallet, formatTokenAmount, pickDefaultWallet } from "./wallets";
 
 const QUOTE_DEBOUNCE_MS = 500;
 // Base has the cheapest gas among the Squid source networks and is where
@@ -89,6 +89,9 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   const [amount, setAmount] = useState("");
   const [debouncedAmount] = useDebounce(amount, QUOTE_DEBOUNCE_MS);
   const [isFunding, setIsFunding] = useState(false);
+  // The source (wallet, network, token) shows as one line until the user wants to change it.
+  const [isSourceExpanded, setSourceExpanded] = useState(false);
+  const [isReviewing, setReviewing] = useState(false);
   const wasOpen = useRef(false);
 
   const squid = { integratorId: readSquidIntegratorId(), fetch: squidFetch };
@@ -161,7 +164,11 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     if (open) setTopUpActive(true);
     else if (wasOpen.current) setTopUpActive(false);
     wasOpen.current = open;
-    if (open) setAmount("");
+    if (open) {
+      setAmount("");
+      setReviewing(false);
+      setSourceExpanded(false);
+    }
   }, [open, setTopUpActive]);
 
   useEffect(
@@ -241,19 +248,42 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   };
 
   const explorerUrl = sourceChain?.blockExplorers?.default.url;
+  const explorerName = sourceChain?.blockExplorers?.default.name;
   const activeStage = stage ?? (pendingDeposit ? "bridging" : null);
-  const showEmptyWalletHint = balances !== undefined && balances.token === 0n && parsedAmount === null && !isBusy;
   const payerLabel = isEmbedded ? "your Privy wallet" : "this wallet";
+  const isSourceResolved = !!payingWallet && !!sourceToken;
+  // One helper at a time, in order of what blocks the payment.
+  const helper =
+    balances === undefined || !isSourceResolved
+      ? null
+      : balances.token === 0n
+        ? "empty"
+        : hasInsufficientUsdc
+          ? "insufficient"
+          : hasInsufficientGas
+            ? "gas"
+            : null;
+  const topUpMessage =
+    helper === "empty"
+      ? `${payerLabel[0].toUpperCase()}${payerLabel.slice(1)} holds no ${sourceToken?.symbol ?? "USDC"} on ${sourceChain?.name ?? "this network"} yet.`
+      : `Not enough ${sourceToken?.symbol ?? "USDC"} in ${payerLabel}.`;
+  const view = stage ? "progress" : pendingDeposit ? "pending" : isReviewing ? "review" : "amount";
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className='max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-[520px]'>
         <DialogHeader>
-          <DialogTitle>Pay with USDC</DialogTitle>
+          <DialogTitle>{view === "review" ? "Review payment" : "Pay with USDC"}</DialogTitle>
           <DialogDescription>
-            Pay USDC from any connected wallet. It is swapped to USDFC via{" "}
-            <ExternalTextLink href='https://app.squidrouter.com/'>Squid</ExternalTextLink> and deposited into your
-            account. Nothing to sign on Filecoin, no FIL needed.
+            {view === "review" ? (
+              "Check the details, then confirm in your wallet."
+            ) : (
+              <>
+                Pay USDC from any connected wallet. It is swapped to USDFC via{" "}
+                <ExternalTextLink href='https://app.squidrouter.com/'>Squid</ExternalTextLink> and deposited into your
+                account. Nothing to sign on Filecoin, no FIL needed.
+              </>
+            )}
             {recipient ? (
               <span className='mt-1 block font-mono text-xs'>Account {formatAddress(recipient)}</span>
             ) : null}
@@ -261,10 +291,11 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
         </DialogHeader>
 
         <div className='grid gap-4 text-sm'>
-          {pendingDeposit ? (
+          {view === "pending" && pendingDeposit && (
             <PendingDepositPanel
               activeStage={activeStage}
               error={execution.error}
+              explorerName={explorerName}
               explorerUrl={explorerUrl}
               hasApproved={execution.hasApproved}
               isBusy={isBusy}
@@ -273,12 +304,53 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
               onDismiss={execution.dismissPendingDeposit}
               pendingDeposit={pendingDeposit}
             />
-          ) : (
+          )}
+
+          {view === "progress" && stage && (
+            <DepositProgress
+              explorerName={explorerName}
+              explorerUrl={explorerUrl}
+              hasApproved={execution.hasApproved}
+              isEmbedded={isEmbedded}
+              stage={stage}
+              transactionHash={execution.transactionHash}
+            />
+          )}
+
+          {view === "review" && quote && sourceToken && payingWallet && sourceChain && rate !== null && (
+            <>
+              <dl className='grid gap-2 rounded-md border p-3'>
+                <div className='flex items-start justify-between gap-4'>
+                  <dt className='text-muted-foreground'>Pay</dt>
+                  <dd className='text-right font-medium'>
+                    {amount} {sourceToken.symbol}
+                    <span className='block text-xs font-normal text-muted-foreground'>
+                      from {describeWallet(payingWallet)} on {sourceChain.name}
+                    </span>
+                  </dd>
+                </div>
+                <div className='flex items-start justify-between gap-4'>
+                  <dt className='text-muted-foreground'>Deposit to</dt>
+                  <dd className='text-right font-medium'>Your Filecoin Pay account</dd>
+                </div>
+              </dl>
+              <QuoteSummary quote={quote} rate={rate} tokenSymbol={sourceToken.symbol} />
+              <p className='text-muted-foreground'>
+                {isEmbedded
+                  ? "Your Privy wallet signs the approval and the swap for you."
+                  : "Your wallet will ask you to approve USDC on a first purchase, then to confirm the swap."}
+              </p>
+            </>
+          )}
+
+          {view === "amount" && (
             <>
               <PaymentSourceFields
                 areWalletsReady={areWalletsReady}
                 isBusy={isBusy}
+                isCollapsed={!isSourceExpanded}
                 onConnectAnother={() => connectWallet()}
+                onExpand={() => setSourceExpanded(true)}
                 onPayingAddressChange={setPayingAddress}
                 onSourceChainChange={(chainId) => {
                   setSourceChainId(chainId);
@@ -312,34 +384,38 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                 <Input
                   disabled={isBusy || !sourceToken}
                   id={amountInputId}
-                  min='0'
+                  inputMode='decimal'
                   onChange={setAmount}
                   placeholder='0.00'
-                  step='any'
-                  type='number'
+                  type='text'
                   value={amount}
                 />
                 {amount !== "" && parsedAmount === null && debouncedAmount === amount && (
                   <p className='text-destructive'>Enter an amount greater than zero.</p>
                 )}
-                {hasInsufficientUsdc && (
-                  <p className='text-destructive' role='alert'>
-                    Not enough {sourceToken?.symbol ?? "USDC"} in this wallet.
-                  </p>
-                )}
               </div>
 
-              {payingWallet && sourceToken && (
+              {(helper === "empty" || helper === "insufficient") && (
                 <TopUpWalletPanel
                   hasPrivyLogin={hasPrivyLogin}
                   isBusy={isBusy}
+                  message={topUpMessage}
                   onBuyWithCard={() => void buyUsdcWithCard()}
                   onLogin={login}
                   onTransfer={() => void transferUsdcToPrivyWallet()}
-                  payerLabel={payerLabel}
-                  showEmptyWalletHint={showEmptyWalletHint}
-                  sourceNetworkName={sourceChain?.name ?? "this network"}
-                  tokenSymbol={sourceToken.symbol}
+                  tone={helper === "insufficient" ? "destructive" : "muted"}
+                />
+              )}
+              {helper === "gas" && sourceChain && requiredNative !== null && (
+                <GasShortfallPanel
+                  gasTopUpAmount={gasTopUpAmount}
+                  hasPrivyLogin={hasPrivyLogin}
+                  isBusy={isBusy}
+                  nativeSymbol={nativeSymbol}
+                  networkName={sourceChain.name}
+                  onAddGas={() => void addGasToPrivyWallet()}
+                  onLogin={login}
+                  requiredNative={requiredNative}
                 />
               )}
 
@@ -354,62 +430,55 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                 </p>
               )}
               {quote && sourceToken && rate !== null && (
-                <QuoteSummary quote={quote} rate={rate} tokenSymbol={sourceToken.symbol} />
-              )}
-
-              {hasInsufficientGas && sourceChain && requiredNative !== null && (
-                <GasShortfallPanel
-                  gasTopUpAmount={gasTopUpAmount}
-                  hasPrivyLogin={hasPrivyLogin}
-                  isBusy={isBusy}
-                  nativeSymbol={nativeSymbol}
-                  networkName={sourceChain.name}
-                  onAddGas={() => void addGasToPrivyWallet()}
-                  onLogin={login}
-                  requiredNative={requiredNative}
-                />
-              )}
-
-              {stage && (
-                <div className='grid gap-1 rounded-md border p-3' role='status'>
-                  <p className='inline-flex items-center gap-2'>
-                    <Loader2 className='h-4 w-4 animate-spin' />
-                    {describeStage(stage, { hasApproved: execution.hasApproved, isEmbedded })}
-                  </p>
-                  {execution.transactionHash && (
-                    <TransactionLink explorerUrl={explorerUrl} hash={execution.transactionHash} />
-                  )}
-                </div>
-              )}
-              {execution.error && (
-                <p className='text-destructive' role='alert'>
-                  {execution.error}
+                <p className='flex items-center justify-between gap-2 text-muted-foreground'>
+                  <span>You receive at least</span>
+                  <span className='font-medium text-foreground'>
+                    {formatUsdfcAmount(quote.minimumDestinationAmount)} USDFC
+                  </span>
                 </p>
               )}
             </>
           )}
+
+          {execution.error && view !== "pending" && (
+            <p className='text-destructive' role='alert'>
+              {execution.error}
+            </p>
+          )}
         </div>
 
         <DialogFooter>
-          <Button disabled={isBusy} onClick={() => handleOpenChange(false)} type='button' variant='ghost'>
-            {pendingDeposit ? "Close" : "Cancel"}
-          </Button>
-          {!pendingDeposit && (
+          {view === "review" ? (
+            <Button disabled={isBusy} onClick={() => setReviewing(false)} type='button' variant='ghost'>
+              Back
+            </Button>
+          ) : (
+            <Button disabled={isBusy} onClick={() => handleOpenChange(false)} type='button' variant='ghost'>
+              {view === "pending" ? "Close" : "Cancel"}
+            </Button>
+          )}
+          {view === "amount" && (
+            <Button
+              aria-label='Review payment'
+              className='disabled:cursor-not-allowed disabled:opacity-50'
+              disabled={!canConfirm}
+              onClick={() => setReviewing(true)}
+              type='button'
+              variant='primary'
+            >
+              Review
+            </Button>
+          )}
+          {view === "review" && sourceToken && (
             <Button
               aria-label='Pay with USDC'
+              className='disabled:cursor-not-allowed disabled:opacity-50'
               disabled={!canConfirm}
               onClick={() => void handleConfirm()}
               type='button'
               variant='primary'
             >
-              {stage ? (
-                <span className='inline-flex items-center gap-2'>
-                  <Loader2 className='h-4 w-4 animate-spin' />
-                  Funding…
-                </span>
-              ) : (
-                "Pay with USDC"
-              )}
+              Pay {amount} {sourceToken.symbol}
             </Button>
           )}
         </DialogFooter>
