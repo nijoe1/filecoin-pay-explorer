@@ -34,6 +34,7 @@ vi.mock("@/hooks/useSynapse", () => ({
   default: () => ({ synapse: undefined }),
 }));
 vi.mock("./components", () => ({
+  FundWithUsdcDialog: ({ open }: { open: boolean }) => <div data-usdc-dialog-open={open} />,
   GuidedTopUpDialog: ({
     onOpenChange,
     open,
@@ -224,5 +225,23 @@ describe("TopUpDialogController recovery", () => {
       } as StorageEvent),
     );
     expect(dialog.recoveryRevision).toBe(initialRevision + 2);
+  });
+});
+
+describe("TopUpDialogController trigger", () => {
+  it("opens the USDC funding dialog instead of the guided swap", () => {
+    let renderer!: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(
+        <TopUpActivityProvider>
+          <TopUpDialogController accountId='0xabc' showTrigger />
+        </TopUpActivityProvider>,
+      );
+    });
+    expect(renderer.root.findByProps({ "data-usdc-dialog-open": false })).toBeDefined();
+
+    act(() => renderer.root.findByProps({ "aria-label": "Fund with USDC" }).props.onClick());
+    expect(renderer.root.findByProps({ "data-usdc-dialog-open": true })).toBeDefined();
+    expect(dialog.open).toBe(false);
   });
 });

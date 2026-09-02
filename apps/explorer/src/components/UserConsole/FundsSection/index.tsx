@@ -14,6 +14,7 @@ import {
   FundsLoadingState,
   FundsOverview,
   FundsSectionLayout,
+  FundWithUsdcDialog,
   TokenSelect,
 } from "./components";
 
@@ -45,6 +46,7 @@ const findDefaultToken = (userTokens: UserToken[], usdfcAddress: string): UserTo
 
 export const FundsSection = ({ account, network, onGuidedTopUp }: FundsSectionProps) => {
   const [addFundsOpen, setAddFundsOpen] = useState(false);
+  const [usdcDialogOpen, setUsdcDialogOpen] = useState(false);
   const [depositDialogOpen, setDepositDialogOpen] = useState(false);
   const [depositToken, setDepositToken] = useState<UserToken | null>(null);
 
@@ -108,6 +110,10 @@ export const FundsSection = ({ account, network, onGuidedTopUp }: FundsSectionPr
         openDirectDeposit();
         return;
       }
+      if (method === "usdc") {
+        setUsdcDialogOpen(true);
+        return;
+      }
       onGuidedTopUp?.();
     },
     [onGuidedTopUp, openDirectDeposit],
@@ -155,6 +161,10 @@ export const FundsSection = ({ account, network, onGuidedTopUp }: FundsSectionPr
           open={addFundsOpen}
           squidAvailable
         />
+      ) : null}
+
+      {canUseGuidedTopUp ? (
+        <FundWithUsdcDialog accountId={account.id} onOpenChange={setUsdcDialogOpen} open={usdcDialogOpen} />
       ) : null}
 
       {/* A null token opens the picker expanded, the first-deposit path for an empty account. */}

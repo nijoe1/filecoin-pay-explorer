@@ -20,8 +20,14 @@ vi.mock("@/components/UserConsole/DepositDialog", () => ({
 }));
 vi.mock("@/components/UserConsole/WithdrawDialog", () => ({ WithdrawDialog: () => null }));
 vi.mock("./components", () => ({
-  AddFundsDialog: ({ onSelect, open }: { onSelect: (method: "deposit" | "squid") => void; open: boolean }) =>
-    open ? <button aria-label='Choose Squid funding' onClick={() => onSelect("squid")} type='button' /> : null,
+  AddFundsDialog: ({ onSelect, open }: { onSelect: (method: "deposit" | "squid" | "usdc") => void; open: boolean }) =>
+    open ? (
+      <>
+        <button aria-label='Choose Squid funding' onClick={() => onSelect("squid")} type='button' />
+        <button aria-label='Choose USDC funding' onClick={() => onSelect("usdc")} type='button' />
+      </>
+    ) : null,
+  FundWithUsdcDialog: ({ open }: { open: boolean }) => (open ? <div data-usdc-dialog /> : null),
   FundsEmptyState: ({ onDeposit }: { onDeposit: () => void }) => (
     <button aria-label='Add funds to empty account' onClick={onDeposit} type='button' />
   ),
@@ -82,5 +88,26 @@ describe("FundsSection guided funding", () => {
     ];
 
     await expectGuidedTopUpFrom("Add funds to populated account");
+  });
+});
+
+describe("FundsSection USDC funding", () => {
+  it("opens the USDC funding dialog from the add-funds chooser", async () => {
+    let renderer!: ReturnType<typeof create>;
+    await act(async () => {
+      renderer = create(<FundsSection account={account} network='mainnet' onGuidedTopUp={() => undefined} />);
+    });
+
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Add funds to empty account" }).props.onClick();
+    });
+    expect(renderer.root.findAllByProps({ "data-usdc-dialog": true })).toHaveLength(0);
+
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Choose USDC funding" }).props.onClick();
+    });
+    expect(renderer.root.findAllByProps({ "data-usdc-dialog": true })).toHaveLength(1);
+
+    await act(async () => renderer.unmount());
   });
 });

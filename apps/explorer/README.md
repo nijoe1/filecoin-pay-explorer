@@ -15,8 +15,12 @@ This app requires the following environment variables:
 | `NEXT_PUBLIC_SUBGRAPH_URL_MAINNET`     | Subgraph URL for Filecoin Mainnet (chain 314) | Yes      |
 | `NEXT_PUBLIC_SUBGRAPH_URL_CALIBRATION` | Subgraph URL for Calibration testnet (314159) | Yes      |
 | `NEXT_PUBLIC_SQUID_INTEGRATOR_ID`      | Optional Squid integrator ID override          | No       |
+| `NEXT_PUBLIC_PRIVY_APP_ID`             | Privy app ID used by the console login        | Yes      |
+| `NEXT_PUBLIC_PRIVY_CLIENT_ID`          | Optional Privy client ID                      | No       |
 
 Squid route quotes use the public `filecoin-testing-94a4a25a-d40b-41cb-b148-e96098862` integrator ID by default.
+
+The console signs in through [Privy](https://www.privy.io/): email or Google login creates an embedded wallet, and external wallets connect as before. "Fund with USDC" in the console pays USDC from any connected wallet, swaps it to USDFC through Squid, and deposits it into the Filecoin Pay account in one transaction.
 
 **Setup:**
 

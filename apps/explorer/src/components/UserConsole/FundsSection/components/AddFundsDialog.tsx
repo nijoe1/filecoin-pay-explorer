@@ -7,9 +7,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@filecoin-pay/ui/components/dialog";
-import { ArrowRight, Repeat, Wallet } from "lucide-react";
+import { ArrowRight, Coins, Repeat, Wallet } from "lucide-react";
 
-export type AddFundsMethod = "deposit" | "squid";
+export type AddFundsMethod = "deposit" | "squid" | "usdc";
 
 type AddFundsDialogProps = {
   onOpenChange: (open: boolean) => void;
@@ -62,6 +62,30 @@ export function AddFundsDialog({
               </span>
             </span>
           </div>
+
+          {squidAvailable && (
+            <div className={enabledCard}>
+              <button
+                aria-label='Fund with USDC'
+                className='absolute inset-0 cursor-pointer rounded-lg'
+                onClick={() => onSelect("usdc")}
+                type='button'
+              />
+              <span className={iconEnabled}>
+                <Coins className='h-5 w-5' />
+              </span>
+              <span className='flex-1'>
+                <span className='flex items-center justify-between font-medium'>
+                  Fund with USDC
+                  <ArrowRight className='h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5' />
+                </span>
+                <span className='mt-1 block text-sm text-muted-foreground'>
+                  Pay USDC from your Privy wallet or another wallet. It is swapped to USDFC and deposited into your
+                  account in one transaction.
+                </span>
+              </span>
+            </div>
+          )}
 
           <div className={squidAvailable ? enabledCard : disabledCard}>
             <button
