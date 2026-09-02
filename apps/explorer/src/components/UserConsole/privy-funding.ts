@@ -1,9 +1,17 @@
 import type { useFiatOnramp } from "@privy-io/react-auth";
 import { toast } from "sonner";
 
-/** Privy's card and exchange onramps deliver to Base; the funding dialog swaps it to USDFC. */
+/** Privy's card and exchange onramps deliver to Base by default; the funding dialog swaps it to USDFC. */
 export const BASE_CHAIN_ID = 8453;
 export const BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
+
+/**
+ * Where a card purchase can land and still be paid into the account: the EVM
+ * networks Privy's fiat onramp delivers USDC on (Base, Ethereum, Arbitrum,
+ * Polygon; Solana and Tempo are not Squid sources), all of which Squid can
+ * bridge from. Source: https://docs.privy.io/wallets/funding/fiat-onramp
+ */
+export const CARD_ONRAMP_CHAIN_IDS: readonly number[] = [BASE_CHAIN_ID, 1, 42161, 137];
 
 export type FiatOnrampOptions = Parameters<ReturnType<typeof useFiatOnramp>["fund"]>[0];
 export type OnrampEnvironment = NonNullable<FiatOnrampOptions["environment"]>;

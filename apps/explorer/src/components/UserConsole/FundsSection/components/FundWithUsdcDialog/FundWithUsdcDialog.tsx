@@ -29,7 +29,9 @@ import { useAccount, usePublicClient } from "wagmi";
 import { isPrivyEmbeddedWallet } from "@/components/UserConsole/console-wallet";
 import {
   BASE_CHAIN_ID,
+  BASE_USDC,
   buildCardOnrampOptions,
+  CARD_ONRAMP_CHAIN_IDS,
   readOnrampEnvironment,
   runPrivyFunding,
   toCaipChainId,
@@ -43,6 +45,7 @@ import { formatUsdfcAmount } from "../../data/funding-runway";
 import { readSquidIntegratorId } from "../../data/squid-integrator";
 import { squidFetch } from "../../data/squid-quote";
 import {
+  findCardUsdcToken,
   findUsdcSourceCovering,
   formatUsdcBalance,
   isSameUsdcSource,
@@ -63,6 +66,9 @@ const QUOTE_DEBOUNCE_MS = 500;
 // Until the scan finds USDC somewhere: Base has the cheapest gas among the
 // Squid source networks and is where Privy's funding flows deliver USDC.
 const FALLBACK_SOURCE: UsdcSourceChoice = { chainId: BASE_CHAIN_ID, token: "" };
+// Where a card purchase or transfer can land and still be paid from here.
+const CARD_CHAINS = SQUID_SOURCE_CHAINS.filter((chain) => CARD_ONRAMP_CHAIN_IDS.includes(chain.id));
+const BASE_USDC_TOKEN = { chainId: BASE_CHAIN_ID, decimals: 6, symbol: "USDC", token: BASE_USDC as `0x${string}` };
 const DEPOSIT_CONTRACTS = { payments: mainnet.contracts.payments.address, usdfc: mainnet.contracts.usdfc.address };
 
 type FundWithUsdcDialogProps = {
@@ -95,6 +101,8 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   const [payingAddress, setPayingAddress] = useState("");
   // The user's own pick, if any; otherwise the source holding the most USDC.
   const [chosenSource, setChosenSource] = useState<UsdcSourceChoice | null>(null);
+  // Where bought or transferred USDC should land; follows the paying network until the user picks.
+  const [chosenCardChainId, setChosenCardChainId] = useState<number | null>(null);
   const [amount, setAmount] = useState("");
   const [debouncedAmount] = useDebounce(amount, QUOTE_DEBOUNCE_MS);
   const [isFunding, setIsFunding] = useState(false);
@@ -114,6 +122,9 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     chosenSource ??
     (defaultSource ? { chainId: defaultSource.chainId, token: defaultSource.token.token } : FALLBACK_SOURCE);
   const sourceChainId = sourceChoice.chainId;
+  const cardChainId =
+    chosenCardChainId ?? (CARD_ONRAMP_CHAIN_IDS.includes(sourceChainId) ? sourceChainId : BASE_CHAIN_ID);
+  const cardChain = CARD_CHAINS.find((chain) => chain.id === cardChainId);
   const sourceChain = SQUID_SOURCE_CHAINS.find((chain) => chain.id === sourceChainId);
   const nativeSymbol = sourceChain?.nativeCurrency.symbol ?? "gas";
   const sourceClient = usePublicClient({ chainId: sourceChainId });
@@ -144,7 +155,6 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     requiredNative,
     sourceToken,
     tokensQuery,
-    usdcTokens,
   } = useSquidDepositQuote({
     amount: debouncedAmount,
     depositTarget: DEPOSIT_CONTRACTS,
@@ -181,6 +191,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     wasOpen.current = open;
     if (open) {
       setAmount("");
+      setChosenCardChainId(null);
       setChosenSource(null);
       setReviewing(false);
       setSourceExpanded(false);
@@ -221,16 +232,20 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     }
   };
 
+  // The USDC a purchase lands as: Squid's listing for the chosen network, or Base's while the scan is out.
+  const cardToken =
+    findCardUsdcToken(scan.sources, cardChainId) ?? (cardChainId === BASE_CHAIN_ID ? BASE_USDC_TOKEN : undefined);
+
   /** Privy's card onramp (Stripe, MoonPay, or Meld by region) into the paying wallet. */
   const buyUsdcWithCard = () => {
-    if (!payingWallet || !sourceToken) return;
+    if (!payingWallet || !cardToken) return;
     return runFundingFlow(
       () =>
         fundWithCard(
           buildCardOnrampOptions({
             address: payingWallet.address,
-            asset: sourceToken.token,
-            chainId: sourceChainId,
+            asset: cardToken.token,
+            chainId: cardChainId,
             defaultAmount: parsedAmount === null ? undefined : amount,
             environment: readOnrampEnvironment(),
           }),
@@ -241,11 +256,11 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
 
   /** Privy's unified funding modal: exchange or a transfer from another wallet. Needs a Privy login. */
   const transferUsdcToPrivyWallet = () => {
-    if (!payingWallet || !sourceToken) return;
+    if (!payingWallet || !cardToken) return;
     return runFundingFlow(
       () =>
         addFunds({
-          destination: { address: payingWallet.address, chain: toCaipChainId(sourceChainId), asset: sourceToken.token },
+          destination: { address: payingWallet.address, chain: toCaipChainId(cardChainId), asset: cardToken.token },
           crypto: {},
         }),
       { successMessage: "USDC is on its way to your Privy wallet", unavailableTitle: "Privy funding is unavailable" },
@@ -391,7 +406,6 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                 sources={scan.sources}
                 sourceToken={sourceToken}
                 tokensQuery={tokensQuery}
-                usdcTokens={usdcTokens}
                 wallets={wallets}
               />
 
@@ -442,12 +456,15 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                   </Button>
                 </div>
               )}
-              {(helper === "empty" || helper === "insufficient") && (
+              {(helper === "empty" || helper === "insufficient") && cardChain && (
                 <TopUpWalletPanel
+                  chainId={cardChainId}
+                  chains={CARD_CHAINS}
                   hasPrivyLogin={hasPrivyLogin}
-                  isBusy={isBusy}
+                  isBusy={isBusy || !cardToken}
                   message={topUpMessage}
                   onBuyWithCard={() => void buyUsdcWithCard()}
+                  onChainChange={setChosenCardChainId}
                   onLogin={login}
                   onTransfer={() => void transferUsdcToPrivyWallet()}
                   tone={helper === "insufficient" ? "destructive" : "muted"}

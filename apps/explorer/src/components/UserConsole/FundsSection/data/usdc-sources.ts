@@ -99,50 +99,34 @@ export function parseUsdcSourceValue(value: string): UsdcSourceChoice {
   return { chainId: Number(chainId), token };
 }
 
-/**
- * The picker's value for the current choice: a scanned network names its
- * token, one still loading (or listing none) is named on its own.
- */
-export function toSelectedUsdcSourceValue(choice: UsdcSourceChoice, sources: readonly UsdcSource[]): string {
-  const isScanned = sources.some((source) => source.chainId === choice.chainId);
-  return toUsdcSourceValue({ chainId: choice.chainId, token: isScanned ? choice.token : "" });
-}
-
-/**
- * Funded pairs first, largest balance on top; every other network after,
- * per token where the scan has answered and by name alone where it has not.
- */
-export function buildUsdcSourceOptions({
+/** The funded pairs the picker offers, largest balance first; nothing else is listed. */
+export function fundedUsdcSourceOptions({
   chains,
   sources,
 }: {
   chains: readonly { id: number; name: string }[];
   sources: readonly UsdcSource[];
-}): { funded: UsdcSourceOption[]; other: UsdcSourceOption[] } {
+}): UsdcSourceOption[] {
   const chainName = (chainId: number) => chains.find((chain) => chain.id === chainId)?.name ?? `Chain ${chainId}`;
   const symbolLabel = (source: UsdcSource) => {
     // Only when two listed tokens on a network share a symbol does the address tell them apart.
     const twins = sources.filter((s) => s.chainId === source.chainId && s.token.symbol === source.token.symbol);
     return twins.length > 1 ? `${source.token.symbol} (${shortAddress(source.token.token)})` : source.token.symbol;
   };
-  const toOption = (source: UsdcSource, withBalance: boolean): UsdcSourceOption => ({
-    chainId: source.chainId,
-    label: [chainName(source.chainId), symbolLabel(source), withBalance ? formatUsdcBalance(source) : null]
-      .filter(Boolean)
-      .join(" · "),
-    token: source.token.token,
-    value: toUsdcSourceValue({ chainId: source.chainId, token: source.token.token }),
-  });
-  const ranked = rankUsdcSources(sources);
-  const funded = ranked.filter(isFundedUsdcSource).map((source) => toOption(source, true));
-  const other = chains.flatMap((chain) => {
-    const listed = sources.filter((source) => source.chainId === chain.id && !isFundedUsdcSource(source));
-    if (sources.some((source) => source.chainId === chain.id)) return listed.map((source) => toOption(source, false));
-    return [
-      { chainId: chain.id, label: chain.name, token: "", value: toUsdcSourceValue({ chainId: chain.id, token: "" }) },
-    ];
-  });
-  return { funded, other };
+  return rankUsdcSources(sources)
+    .filter(isFundedUsdcSource)
+    .map((source) => ({
+      chainId: source.chainId,
+      label: `${chainName(source.chainId)} · ${symbolLabel(source)} · ${formatUsdcBalance(source)}`,
+      token: source.token.token,
+      value: toUsdcSourceValue({ chainId: source.chainId, token: source.token.token }),
+    }));
+}
+
+/** The token a card purchase should deliver on a network: plain USDC when Squid lists it, else the first USDC-like one. */
+export function findCardUsdcToken(sources: readonly UsdcSource[], chainId: number): UsdcSource["token"] | undefined {
+  const listed = sources.filter((source) => source.chainId === chainId).map((source) => source.token);
+  return listed.find((token) => token.symbol.toUpperCase() === "USDC") ?? listed[0];
 }
 
 function shortAddress(address: string): string {

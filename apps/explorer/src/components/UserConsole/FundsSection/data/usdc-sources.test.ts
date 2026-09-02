@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   type BalanceReader,
-  buildUsdcSourceOptions,
+  findCardUsdcToken,
   findUsdcSourceCovering,
   formatUsdcBalance,
+  fundedUsdcSourceOptions,
   isSameUsdcSource,
   parseUsdcSourceValue,
   pickDefaultUsdcSource,
   rankUsdcSources,
   readUsdcSources,
-  toSelectedUsdcSourceValue,
   type UsdcSource,
 } from "./usdc-sources";
 
@@ -100,15 +100,15 @@ describe("ranking USDC sources", () => {
   });
 });
 
-describe("buildUsdcSourceOptions", () => {
+describe("fundedUsdcSourceOptions", () => {
   const chains = [
     { id: 8453, name: "Base" },
     { id: 42161, name: "Arbitrum" },
     { id: 1, name: "Ethereum" },
   ];
 
-  it("lists funded pairs with balances first, then the rest per token or by network name while unscanned", () => {
-    const { funded, other } = buildUsdcSourceOptions({
+  it("lists only funded pairs, largest first, with the address only where symbols collide", () => {
+    const options = fundedUsdcSourceOptions({
       chains,
       sources: [
         source(BASE_USDC, 5_000_000n),
@@ -117,17 +117,15 @@ describe("buildUsdcSourceOptions", () => {
         source(token(42161, "0x8888888888888888888888888888888888888888"), 0n),
       ],
     });
-    expect(funded.map((o) => o.label)).toEqual(["Arbitrum · USDC (0x6666...6666) · 120.5", "Base · USDC · 5"]);
-    expect(other.map((o) => o.label)).toEqual(["Base · USDbC", "Arbitrum · USDC (0x8888...8888)", "Ethereum"]);
-    expect(other.at(-1)).toMatchObject({ chainId: 1, token: "", value: "1:" });
-    expect(parseUsdcSourceValue(funded[0].value)).toEqual({ chainId: 42161, token: ARBITRUM_USDC.token });
+    expect(options.map((o) => o.label)).toEqual(["Arbitrum · USDC (0x6666...6666) · 120.5", "Base · USDC · 5"]);
+    expect(parseUsdcSourceValue(options[0].value)).toEqual({ chainId: 42161, token: ARBITRUM_USDC.token });
+    expect(fundedUsdcSourceOptions({ chains, sources: [source(BASE_USDC, 0n)] })).toEqual([]);
   });
 
-  it("names the selected network on its own until its scan has answered", () => {
-    const sources = [source(BASE_USDC, 0n)];
-    expect(toSelectedUsdcSourceValue({ chainId: 8453, token: BASE_USDC.token }, sources)).toBe(
-      `8453:${BASE_USDC.token}`,
-    );
-    expect(toSelectedUsdcSourceValue({ chainId: 1, token: BASE_USDC.token }, sources)).toBe("1:");
+  it("delivers a card purchase to plain USDC when Squid lists it, else the first USDC-like token", () => {
+    const sources = [source(BASE_USDBC, 0n), source(BASE_USDC, 0n), source(ARBITRUM_USDC, 0n)];
+    expect(findCardUsdcToken(sources, 8453)).toEqual(BASE_USDC);
+    expect(findCardUsdcToken([source(BASE_USDBC, 0n)], 8453)).toEqual(BASE_USDBC);
+    expect(findCardUsdcToken(sources, 1)).toBeUndefined();
   });
 });

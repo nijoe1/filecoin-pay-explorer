@@ -2,6 +2,7 @@ import type { SourceToken } from "@filecoin-project/squid-evm-funding";
 import type { ReactNode } from "react";
 import { act, create, type ReactTestInstance } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BASE_USDC as BASE_USDC_ADDRESS } from "@/components/UserConsole/privy-funding";
 import type { UsdcSource } from "../../data/usdc-sources";
 import { FundWithUsdcDialog } from "./FundWithUsdcDialog";
 
@@ -20,13 +21,7 @@ const ARB_USDC: SourceToken = {
   symbol: "USDC",
   decimals: 6,
 };
-const ETH_USDC: SourceToken = {
-  chainId: 1,
-  token: "0x7777777777777777777777777777777777777777",
-  symbol: "USDC",
-  decimals: 6,
-};
-const TOKENS_BY_CHAIN: Record<number, SourceToken[]> = { 1: [ETH_USDC], 8453: [BASE_USDC], 42161: [ARB_USDC] };
+const TOKENS_BY_CHAIN: Record<number, SourceToken[]> = { 8453: [BASE_USDC], 42161: [ARB_USDC] };
 
 const privy = vi.hoisted(() => ({
   addFunds: vi.fn(),
@@ -178,13 +173,16 @@ describe("FundWithUsdcDialog", () => {
     const renderer = await render();
 
     // The source shows as a summary line until the user asks to change it.
-    expect(renderer.root.findAllByType("option")).toHaveLength(0);
+    expect(has(renderer, "Paying wallet")).toBe(false);
     await act(async () => {
       renderer.root.findByProps({ "aria-label": "Change payment source" }).props.onClick();
     });
     expect(optionLabels(renderer)).toContain("Privy wallet (0x1111...1111)");
     expect(optionLabels(renderer)).toContain("Metamask (0x3333...3333)");
-    expect(optionLabels(renderer)).toContain("Base");
+    // Nothing is funded, so no network is offered to pay with; the card panel picks where USDC lands.
+    expect(optionLabels(renderer).filter((label) => String(label).includes(" · "))).toEqual([]);
+    expect(text(renderer)).toContain("No USDC found on any supported network.");
+    expect(optionLabels(renderer)).toEqual(expect.arrayContaining(["Base", "Ethereum", "Arbitrum", "Polygon"]));
 
     await act(async () => {
       renderer.root.findByProps({ "aria-label": "Connect another wallet" }).props.onClick();
@@ -199,9 +197,10 @@ describe("FundWithUsdcDialog", () => {
     await act(async () => {
       renderer.root.findByProps({ "aria-label": "Buy USDC with card" }).props.onClick();
     });
+    // Nothing was scanned yet, so the purchase lands as Base's well-known USDC.
     expect(privy.fundWithCard).toHaveBeenCalledWith({
       source: {},
-      destination: { address: EMBEDDED, chain: "eip155:8453", asset: BASE_USDC.token },
+      destination: { address: EMBEDDED, chain: "eip155:8453", asset: BASE_USDC_ADDRESS },
       environment: "production",
     });
     expect(topUpActivity.setTopUpActive).toHaveBeenCalledWith(true);
@@ -250,18 +249,18 @@ describe("FundWithUsdcDialog", () => {
     });
     const sourceLabels = optionLabels(renderer).filter((label) => String(label).includes(" · "));
     expect(sourceLabels).toEqual(["Arbitrum · USDC · 120.5", "Base · USDC · 5"]);
-    expect(renderer.root.findAllByProps({ "data-group-label": true }).map((n) => n.props.children)).toEqual([
-      "Your USDC",
-      "Other networks",
-    ]);
+    expect(renderer.root.findAllByProps({ "data-group-label": true })).toHaveLength(0);
+    expect(optionLabels(renderer)).not.toContain("Ethereum");
     const sourceSelect = selectAround(renderer.root.findByProps({ "aria-label": "Payment source" }));
     expect(sourceSelect.props.value).toBe(`42161:${ARB_USDC.token}`);
 
-    // Ethereum holds nothing here, so the dialog points back to Arbitrum instead of selling USDC.
+    // Base holds too little for 100, so the dialog points back to Arbitrum instead of selling USDC.
+    const amountInput = renderer.root.findByProps({ "data-amount": true });
     await act(async () => {
-      sourceSelect.props.onValueChange(`1:${ETH_USDC.token}`);
+      amountInput.props["data-set-amount"]("100");
+      sourceSelect.props.onValueChange(`8453:${BASE_USDC.token}`);
     });
-    expect(text(renderer)).toContain("Arbitrum holds 120.5 USDC.");
+    expect(text(renderer)).toContain("Arbitrum holds 120.5 USDC, enough for this amount.");
     expect(has(renderer, "Buy USDC with card")).toBe(false);
     await act(async () => {
       renderer.root.findByProps({ "aria-label": "Pay from Arbitrum" }).props.onClick();
@@ -285,6 +284,25 @@ describe("FundWithUsdcDialog", () => {
     });
     expect(text(renderer)).toContain("Not enough USDC in your Privy wallet on any supported network.");
     expect(has(renderer, "Buy USDC with card")).toBe(true);
+    // The purchase follows the paying network until the user picks another card network.
+    const cardChain = selectAround(renderer.root.findByProps({ "aria-label": "Network to add USDC on" }));
+    expect(cardChain.props.value).toBe("42161");
+    await act(async () => {
+      cardChain.props.onValueChange("137");
+    });
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Buy USDC with card" }).props.onClick();
+    });
+    expect(privy.fundWithCard).not.toHaveBeenCalled(); // Polygon's USDC is unknown until the scan lists it
+    await act(async () => {
+      selectAround(renderer.root.findByProps({ "aria-label": "Network to add USDC on" })).props.onValueChange("8453");
+    });
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Buy USDC with card" }).props.onClick();
+    });
+    expect(privy.fundWithCard).toHaveBeenCalledWith(
+      expect.objectContaining({ destination: { address: EMBEDDED, chain: "eip155:8453", asset: BASE_USDC.token } }),
+    );
 
     await act(async () => {
       amountInput.props["data-set-amount"]("100");

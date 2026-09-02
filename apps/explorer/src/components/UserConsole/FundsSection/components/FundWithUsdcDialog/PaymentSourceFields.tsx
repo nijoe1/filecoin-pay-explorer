@@ -1,30 +1,22 @@
 import { Button } from "@filecoin-foundation/ui-filecoin/Button";
 import { Label } from "@filecoin-pay/ui/components/label";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@filecoin-pay/ui/components/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@filecoin-pay/ui/components/select";
 import type { SourceToken } from "@filecoin-project/squid-evm-funding";
 import type { ConnectedWallet } from "@privy-io/react-auth";
 import { SQUID_SOURCE_CHAINS } from "@/constants/chains";
 import {
-  buildUsdcSourceOptions,
   formatUsdcBalance,
+  fundedUsdcSourceOptions,
   isSameUsdcSource,
   parseUsdcSourceValue,
-  toSelectedUsdcSourceValue,
+  toUsdcSourceValue,
   type UsdcSource,
   type UsdcSourceChoice,
 } from "../../data/usdc-sources";
 import type { SourceChain } from "./useSquidDepositExecution";
 import { describeWallet } from "./wallets";
 
-/** Which wallet pays, and with which USDC on which network. */
+/** Which wallet pays, and with which of the USDC it holds. */
 export function PaymentSourceFields({
   areWalletsReady,
   isBusy,
@@ -40,7 +32,6 @@ export function PaymentSourceFields({
   sources,
   sourceToken,
   tokensQuery,
-  usdcTokens,
   wallets,
 }: {
   areWalletsReady: boolean;
@@ -59,25 +50,32 @@ export function PaymentSourceFields({
   /** The paying wallet's USDC on every network, largest first. */
   sources: readonly UsdcSource[];
   sourceToken: SourceToken | undefined;
-  tokensQuery: { isError: boolean; isPending: boolean };
-  usdcTokens: SourceToken[];
+  tokensQuery: { isError: boolean };
   wallets: ConnectedWallet[];
 }) {
+  const funded = fundedUsdcSourceOptions({ chains: SQUID_SOURCE_CHAINS, sources });
   const selectedSource = sources.find((source) => isSameUsdcSource(source, sourceChoice));
-  if (isCollapsed && payingWallet && sourceToken) {
+  const isSelectedFunded = !!selectedSource && selectedSource.balance > 0n;
+  const emptyNote = isScanning ? "Checking balances…" : "No USDC found on any supported network.";
+
+  if (isCollapsed && payingWallet) {
     return (
       <div className='flex flex-wrap items-center justify-between gap-2 rounded-md border p-3'>
         <span>
           <span className='text-muted-foreground'>From </span>
           {describeWallet(payingWallet)}
-          <span className='text-muted-foreground'> on </span>
-          {sourceChain?.name ?? "this network"}
-          {selectedSource ? (
-            <span className='text-muted-foreground'>
-              {" "}
-              · {formatUsdcBalance(selectedSource)} {sourceToken.symbol}
-            </span>
-          ) : null}
+          {isSelectedFunded && selectedSource && sourceToken ? (
+            <>
+              <span className='text-muted-foreground'> on </span>
+              {sourceChain?.name ?? "this network"}
+              <span className='text-muted-foreground'>
+                {" "}
+                · {formatUsdcBalance(selectedSource)} {sourceToken.symbol}
+              </span>
+            </>
+          ) : (
+            <span className='text-muted-foreground'> · {funded.length > 0 ? "choose a network" : emptyNote}</span>
+          )}
         </span>
         <Button
           aria-label='Change payment source'
@@ -92,7 +90,6 @@ export function PaymentSourceFields({
       </div>
     );
   }
-  const { funded, other } = buildUsdcSourceOptions({ chains: SQUID_SOURCE_CHAINS, sources });
   return (
     <>
       <div className='grid gap-4 sm:grid-cols-2'>
@@ -131,48 +128,38 @@ export function PaymentSourceFields({
         <div className='grid gap-2'>
           <div className='flex h-6 items-center justify-between gap-2'>
             <Label htmlFor='fund-with-usdc-source'>Pay with</Label>
-            {isScanning ? <span className='text-xs text-muted-foreground'>Checking balances…</span> : null}
+            {isScanning && funded.length > 0 ? (
+              <span className='text-xs text-muted-foreground'>Checking balances…</span>
+            ) : null}
           </div>
-          <Select
-            disabled={isBusy}
-            onValueChange={(value) => onSourceChange(parseUsdcSourceValue(value))}
-            value={toSelectedUsdcSourceValue(sourceChoice, sources)}
-          >
-            <SelectTrigger aria-label='Payment source' className='w-full' id='fund-with-usdc-source'>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {funded.length > 0 && (
-                <SelectGroup>
-                  <SelectLabel>Your USDC</SelectLabel>
-                  {funded.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              )}
-              {other.length > 0 && (
-                <SelectGroup>
-                  <SelectLabel>{funded.length > 0 ? "Other networks" : "Networks"}</SelectLabel>
-                  {other.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              )}
-            </SelectContent>
-          </Select>
+          {funded.length > 0 ? (
+            <Select
+              disabled={isBusy}
+              onValueChange={(value) => onSourceChange(parseUsdcSourceValue(value))}
+              value={isSelectedFunded ? toUsdcSourceValue(sourceChoice) : ""}
+            >
+              <SelectTrigger aria-label='Payment source' className='w-full' id='fund-with-usdc-source'>
+                <SelectValue placeholder='Choose a network' />
+              </SelectTrigger>
+              <SelectContent>
+                {funded.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <p className='flex h-9 items-center text-muted-foreground' id='fund-with-usdc-source'>
+              {emptyNote}
+            </p>
+          )}
         </div>
       </div>
       {tokensQuery.isError && (
         <p className='text-destructive' role='alert'>
           Could not load Squid's token list. Try again shortly.
         </p>
-      )}
-      {!tokensQuery.isPending && !tokensQuery.isError && usdcTokens.length === 0 && (
-        <p className='text-muted-foreground'>Squid lists no USDC on {sourceChain?.name ?? "this network"}.</p>
       )}
     </>
   );
