@@ -29,7 +29,6 @@ import { useAccount, usePublicClient } from "wagmi";
 import { isPrivyEmbeddedWallet } from "@/components/UserConsole/console-wallet";
 import {
   BASE_CHAIN_ID,
-  BASE_USDC,
   buildCardOnrampOptions,
   CARD_ONRAMP_CHAIN_IDS,
   readOnrampEnvironment,
@@ -68,7 +67,6 @@ const QUOTE_DEBOUNCE_MS = 500;
 const FALLBACK_SOURCE: UsdcSourceChoice = { chainId: BASE_CHAIN_ID, token: "" };
 // Where a card purchase or transfer can land and still be paid from here.
 const CARD_CHAINS = SQUID_SOURCE_CHAINS.filter((chain) => CARD_ONRAMP_CHAIN_IDS.includes(chain.id));
-const BASE_USDC_TOKEN = { chainId: BASE_CHAIN_ID, decimals: 6, symbol: "USDC", token: BASE_USDC as `0x${string}` };
 const DEPOSIT_CONTRACTS = { payments: mainnet.contracts.payments.address, usdfc: mainnet.contracts.usdfc.address };
 
 type FundWithUsdcDialogProps = {
@@ -232,9 +230,8 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     }
   };
 
-  // The USDC a purchase lands as: Squid's listing for the chosen network, or Base's while the scan is out.
-  const cardToken =
-    findCardUsdcToken(scan.sources, cardChainId) ?? (cardChainId === BASE_CHAIN_ID ? BASE_USDC_TOKEN : undefined);
+  // The USDC a purchase lands as: native USDC on the chosen network, by Squid's listing or by address.
+  const cardToken = findCardUsdcToken(scan.sources, cardChainId);
 
   /** Privy's card onramp (Stripe, MoonPay, or Meld by region) into the paying wallet. */
   const buyUsdcWithCard = () => {
@@ -461,7 +458,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                   chainId={cardChainId}
                   chains={CARD_CHAINS}
                   hasPrivyLogin={hasPrivyLogin}
-                  isBusy={isBusy || !cardToken}
+                  isBusy={isBusy}
                   message={topUpMessage}
                   onBuyWithCard={() => void buyUsdcWithCard()}
                   onChainChange={setChosenCardChainId}

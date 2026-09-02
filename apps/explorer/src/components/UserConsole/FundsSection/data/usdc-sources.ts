@@ -1,5 +1,6 @@
 import type { SourceToken } from "@filecoin-project/squid-evm-funding";
 import { type Address, erc20Abi, formatUnits } from "viem";
+import { NATIVE_USDC_BY_CHAIN } from "@/components/UserConsole/privy-funding";
 import { parseFundingAmount } from "./funding-runway";
 
 /** One USDC token on one source network, with the paying wallet's balance of it. */
@@ -123,10 +124,16 @@ export function fundedUsdcSourceOptions({
     }));
 }
 
-/** The token a card purchase should deliver on a network: plain USDC when Squid lists it, else the first USDC-like one. */
+/**
+ * The token a card purchase delivers on a network: the onramp only issues
+ * native USDC, so it is Squid's plain USDC listing when the scan has one, else
+ * the network's known native USDC, and nothing on a network the onramp lacks.
+ */
 export function findCardUsdcToken(sources: readonly UsdcSource[], chainId: number): UsdcSource["token"] | undefined {
-  const listed = sources.filter((source) => source.chainId === chainId).map((source) => source.token);
-  return listed.find((token) => token.symbol.toUpperCase() === "USDC") ?? listed[0];
+  const listed = sources.find((source) => source.chainId === chainId && source.token.symbol.toUpperCase() === "USDC");
+  if (listed) return listed.token;
+  const native = NATIVE_USDC_BY_CHAIN[chainId];
+  return native ? { chainId, decimals: 6, symbol: "USDC", token: native } : undefined;
 }
 
 function shortAddress(address: string): string {

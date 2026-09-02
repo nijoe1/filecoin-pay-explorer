@@ -2,7 +2,7 @@ import type { SourceToken } from "@filecoin-project/squid-evm-funding";
 import type { ReactNode } from "react";
 import { act, create, type ReactTestInstance } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BASE_USDC as BASE_USDC_ADDRESS } from "@/components/UserConsole/privy-funding";
+import { BASE_USDC as BASE_USDC_ADDRESS, NATIVE_USDC_BY_CHAIN } from "@/components/UserConsole/privy-funding";
 import type { UsdcSource } from "../../data/usdc-sources";
 import { FundWithUsdcDialog } from "./FundWithUsdcDialog";
 
@@ -197,7 +197,7 @@ describe("FundWithUsdcDialog", () => {
     await act(async () => {
       renderer.root.findByProps({ "aria-label": "Buy USDC with card" }).props.onClick();
     });
-    // Nothing was scanned yet, so the purchase lands as Base's well-known USDC.
+    // Nothing was scanned yet, so the purchase lands as Base's native USDC.
     expect(privy.fundWithCard).toHaveBeenCalledWith({
       source: {},
       destination: { address: EMBEDDED, chain: "eip155:8453", asset: BASE_USDC_ADDRESS },
@@ -293,7 +293,12 @@ describe("FundWithUsdcDialog", () => {
     await act(async () => {
       renderer.root.findByProps({ "aria-label": "Buy USDC with card" }).props.onClick();
     });
-    expect(privy.fundWithCard).not.toHaveBeenCalled(); // Polygon's USDC is unknown until the scan lists it
+    // Polygon is not in the scan's answer, so the purchase lands as its native USDC by address.
+    expect(privy.fundWithCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        destination: { address: EMBEDDED, chain: "eip155:137", asset: NATIVE_USDC_BY_CHAIN[137] },
+      }),
+    );
     await act(async () => {
       selectAround(renderer.root.findByProps({ "aria-label": "Network to add USDC on" })).props.onValueChange("8453");
     });

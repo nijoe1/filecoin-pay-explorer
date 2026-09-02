@@ -122,10 +122,16 @@ describe("fundedUsdcSourceOptions", () => {
     expect(fundedUsdcSourceOptions({ chains, sources: [source(BASE_USDC, 0n)] })).toEqual([]);
   });
 
-  it("delivers a card purchase to plain USDC when Squid lists it, else the first USDC-like token", () => {
+  it("delivers a card purchase to Squid's plain USDC, else the network's native USDC, never a bridged one", () => {
     const sources = [source(BASE_USDBC, 0n), source(BASE_USDC, 0n), source(ARBITRUM_USDC, 0n)];
     expect(findCardUsdcToken(sources, 8453)).toEqual(BASE_USDC);
-    expect(findCardUsdcToken([source(BASE_USDBC, 0n)], 8453)).toEqual(BASE_USDBC);
-    expect(findCardUsdcToken(sources, 1)).toBeUndefined();
+    expect(findCardUsdcToken([source(BASE_USDBC, 0n)], 8453)).toEqual({
+      chainId: 8453,
+      decimals: 6,
+      symbol: "USDC",
+      token: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+    });
+    expect(findCardUsdcToken(sources, 137)?.token).toBe("0x3c499c542cef5e3811e1192ce70d8cc03d5c3359");
+    expect(findCardUsdcToken(sources, 10)).toBeUndefined();
   });
 });

@@ -3,15 +3,23 @@ import { toast } from "sonner";
 
 /** Privy's card and exchange onramps deliver to Base by default; the funding dialog swaps it to USDFC. */
 export const BASE_CHAIN_ID = 8453;
-export const BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
 
 /**
- * Where a card purchase can land and still be paid into the account: the EVM
- * networks Privy's fiat onramp delivers USDC on (Base, Ethereum, Arbitrum,
- * Polygon; Solana and Tempo are not Squid sources), all of which Squid can
- * bridge from. Source: https://docs.privy.io/wallets/funding/fiat-onramp
+ * The USDC Privy's onramp delivers on each network it serves: Circle's native
+ * issue, not a bridged variant. These are the networks where a card purchase
+ * can land and still be paid into the account: the EVM networks the onramp
+ * delivers USDC on (Base, Ethereum, Arbitrum, Polygon; Solana and Tempo are
+ * not Squid sources), all of which Squid can bridge from. Base leads as the
+ * cheapest to pay from. Source: https://docs.privy.io/wallets/funding/fiat-onramp
  */
+export const NATIVE_USDC_BY_CHAIN: Readonly<Record<number, `0x${string}`>> = {
+  [BASE_CHAIN_ID]: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+  1: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+  42161: "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
+  137: "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
+};
 export const CARD_ONRAMP_CHAIN_IDS: readonly number[] = [BASE_CHAIN_ID, 1, 42161, 137];
+export const BASE_USDC = NATIVE_USDC_BY_CHAIN[BASE_CHAIN_ID];
 
 export type FiatOnrampOptions = Parameters<ReturnType<typeof useFiatOnramp>["fund"]>[0];
 export type OnrampEnvironment = NonNullable<FiatOnrampOptions["environment"]>;
