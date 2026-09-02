@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@filecoin-pay/ui/components/dropdown-menu";
-import { useAddFunds, useConnectWallet, useExportWallet, usePrivy } from "@privy-io/react-auth";
+import { useConnectWallet, useExportWallet, useFiatOnramp, usePrivy } from "@privy-io/react-auth";
 import {
   ArrowUpRightIcon,
   Check,
@@ -28,27 +28,23 @@ import { useAccount, useBalance, useDisconnect, useReadContract, useWalletClient
 import FilecoinLogo from "@/assests/FilecoinLogo";
 import USDFCLogo from "@/assests/USDFCLogo";
 import { useFundingLaunch } from "@/components/UserConsole/FundingLaunchContext";
+import {
+  BASE_CHAIN_ID,
+  BASE_USDC,
+  buildCardOnrampOptions,
+  isFundingExit,
+  readOnrampEnvironment,
+} from "@/components/UserConsole/privy-funding";
 import { isReviewEnabled, setReviewEnabled, useIsEmbeddedSigner } from "@/components/UserConsole/TransactionReview";
 import useSynapse from "@/hooks/useSynapse";
 import { formatAddress } from "@/utils/formatter";
-
-// Privy's card and exchange onramps deliver to Base; the funding dialog then
-// swaps it into USDFC and deposits it.
-const BASE_CHAIN_ID = 8453;
-const BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
-
-/** Privy rejects its funding promise when the user simply closes the modal. */
-const isFundingExit = (error: unknown) => {
-  const message = error instanceof Error ? error.message : "";
-  return message === "" || /exit|clos|cancel|dismiss/i.test(message);
-};
 
 const Balance = () => {
   const { constants } = useSynapse();
   const { address } = useAccount();
   const { disconnect } = useDisconnect();
   const { authenticated, logout } = usePrivy();
-  const { addFunds } = useAddFunds();
+  const { fund: fundWithCard } = useFiatOnramp();
   const { connectWallet } = useConnectWallet();
   const { exportWallet } = useExportWallet();
   const { launchUsdcFunding } = useFundingLaunch();
@@ -81,20 +77,23 @@ const Balance = () => {
     }
   };
 
-  /** Card, exchange, or wallet transfer into the Privy wallet, then straight into USDC funding. */
-  const buyUsdcWithPrivy = async () => {
+  /** Privy's card onramp into the embedded wallet on Base, then straight into USDC funding. */
+  const buyUsdcWithCard = async () => {
     if (!address) return;
     try {
-      await addFunds({
-        destination: { address, chain: `eip155:${BASE_CHAIN_ID}`, asset: BASE_USDC },
-        fiat: {},
-        crypto: {},
-      });
+      await fundWithCard(
+        buildCardOnrampOptions({
+          address,
+          asset: BASE_USDC,
+          chainId: BASE_CHAIN_ID,
+          environment: readOnrampEnvironment(),
+        }),
+      );
       launchUsdcFunding();
     } catch (error) {
       if (!isFundingExit(error)) {
-        toast.error("Privy funding is unavailable", {
-          description: error instanceof Error ? error.message : undefined,
+        toast.error("Card purchases are unavailable", {
+          description: error instanceof Error ? error.message : "Enable funding in the Privy dashboard.",
         });
       }
     }
@@ -171,7 +170,7 @@ const Balance = () => {
           <span className='text-base text-zinc-950'>Fund with USDC</span>
         </DropdownMenuItem>
         {isEmbeddedSigner ? (
-          <DropdownMenuItem onClick={() => void buyUsdcWithPrivy()} className='cursor-pointer py-2'>
+          <DropdownMenuItem onClick={() => void buyUsdcWithCard()} className='cursor-pointer py-2'>
             <CreditCard />
             <span className='text-base text-zinc-950'>Buy USDC with card</span>
           </DropdownMenuItem>

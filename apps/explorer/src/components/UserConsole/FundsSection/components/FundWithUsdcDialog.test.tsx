@@ -18,6 +18,7 @@ const privy = vi.hoisted(() => ({
   addFunds: vi.fn(),
   connectWallet: vi.fn(),
   fundWallet: vi.fn(),
+  fundWithCard: vi.fn(),
   wallets: [] as { address: string; walletClientType: string }[],
 }));
 const topUpActivity = vi.hoisted(() => ({ setTopUpActive: vi.fn() }));
@@ -29,6 +30,7 @@ vi.mock("wagmi", () => ({
 vi.mock("@privy-io/react-auth", () => ({
   useAddFunds: () => ({ addFunds: privy.addFunds }),
   useConnectWallet: () => ({ connectWallet: privy.connectWallet }),
+  useFiatOnramp: () => ({ fund: privy.fundWithCard }),
   useFundWallet: () => ({ fundWallet: privy.fundWallet }),
   useWallets: () => ({ ready: true, wallets: privy.wallets }),
 }));
@@ -151,6 +153,14 @@ describe("FundWithUsdcDialog", () => {
     expect(renderer.root.findByProps({ "aria-label": "Fund with USDC" }).props.disabled).toBe(true);
     // The embedded wallet is the default payer, so Privy's USDC funding is offered.
     expect(renderer.root.findAllByProps({ "aria-label": "Add USDC with Privy" }, { deep: false })).toHaveLength(1);
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Buy USDC with card" }).props.onClick();
+    });
+    expect(privy.fundWithCard).toHaveBeenCalledWith({
+      source: {},
+      destination: { address: EMBEDDED, chain: "eip155:8453", asset: USDC_TOKENS[0].token },
+      environment: "production",
+    });
     expect(topUpActivity.setTopUpActive).toHaveBeenCalledWith(true);
 
     await act(async () => renderer.unmount());

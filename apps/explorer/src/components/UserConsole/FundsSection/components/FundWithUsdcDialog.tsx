@@ -13,7 +13,14 @@ import {
 import { Label } from "@filecoin-pay/ui/components/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@filecoin-pay/ui/components/select";
 import { fetchSourceTokens } from "@filecoin-project/squid-evm-funding";
-import { type ConnectedWallet, useAddFunds, useConnectWallet, useFundWallet, useWallets } from "@privy-io/react-auth";
+import {
+  type ConnectedWallet,
+  useAddFunds,
+  useConnectWallet,
+  useFiatOnramp,
+  useFundWallet,
+  useWallets,
+} from "@privy-io/react-auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
@@ -22,6 +29,12 @@ import { useDebounce } from "use-debounce";
 import { type Address, createWalletClient, custom, erc20Abi, formatUnits, type Hash, parseUnits } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 import { isPrivyEmbeddedWallet } from "@/components/UserConsole/console-wallet";
+import {
+  buildCardOnrampOptions,
+  isFundingExit,
+  readOnrampEnvironment,
+  toCaipChainId,
+} from "@/components/UserConsole/privy-funding";
 import { useTopUpActivity } from "@/components/UserConsole/TopUpActivityContext";
 import { useTransactionReview } from "@/components/UserConsole/TransactionReview";
 import { mainnet, SQUID_SOURCE_CHAINS } from "@/constants/chains";
@@ -99,11 +112,7 @@ export function parseUsdcAmount(amount: string, decimals: number): bigint | null
   }
 }
 
-/** Privy rejects its funding promise when the user simply closes the modal. */
-export function isFundingExit(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  return message === "" || /exit|clos|cancel|dismiss/i.test(message);
-}
+export { isFundingExit };
 
 function pickDefaultWallet(wallets: readonly ConnectedWallet[]): ConnectedWallet | undefined {
   return wallets.find(isPrivyEmbeddedWallet) ?? wallets[0];
@@ -126,6 +135,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   const { ready: walletsReady, wallets } = useWallets();
   const { connectWallet } = useConnectWallet();
   const { addFunds } = useAddFunds();
+  const { fund: fundWithCard } = useFiatOnramp();
   const { fundWallet } = useFundWallet();
   const { setTopUpActive } = useTopUpActivity();
   const { requestReview, reviewDialog } = useTransactionReview();
@@ -448,27 +458,52 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     }
   };
 
-  /** Privy's funding modal: card onramp, exchange, or a transfer from another wallet. */
-  const addUsdcToPrivyWallet = async () => {
-    if (!payingWallet || !sourceToken) return;
+  const runPrivyFunding = async (flow: () => Promise<unknown>, unavailableMessage: string) => {
     setIsFunding(true);
     try {
-      await addFunds({
-        destination: { address: payingWallet.address, chain: `eip155:${sourceChainId}`, asset: sourceToken.token },
-        fiat: parsedAmount === null ? {} : { defaultAmount: amount },
-        crypto: {},
-      });
+      await flow();
       toast.success("USDC is on its way to your Privy wallet");
     } catch (fundError) {
       if (!isFundingExit(fundError)) {
-        toast.error("Privy funding is unavailable", {
-          description: fundError instanceof Error ? fundError.message : undefined,
+        toast.error(unavailableMessage, {
+          description: fundError instanceof Error ? fundError.message : "Enable funding in the Privy dashboard.",
         });
       }
     } finally {
       setIsFunding(false);
       void balancesQuery.refetch();
     }
+  };
+
+  /** Privy's card onramp (Stripe, MoonPay, or Meld by region) into the embedded wallet. */
+  const buyUsdcWithCard = () => {
+    if (!payingWallet || !sourceToken) return;
+    return runPrivyFunding(
+      () =>
+        fundWithCard(
+          buildCardOnrampOptions({
+            address: payingWallet.address,
+            asset: sourceToken.token,
+            chainId: sourceChainId,
+            defaultAmount: parsedAmount === null ? undefined : amount,
+            environment: readOnrampEnvironment(),
+          }),
+        ),
+      "Card purchases are unavailable",
+    );
+  };
+
+  /** Privy's unified funding modal: exchange or a transfer from another wallet. */
+  const transferUsdcToPrivyWallet = () => {
+    if (!payingWallet || !sourceToken) return;
+    return runPrivyFunding(
+      () =>
+        addFunds({
+          destination: { address: payingWallet.address, chain: toCaipChainId(sourceChainId), asset: sourceToken.token },
+          crypto: {},
+        }),
+      "Privy funding is unavailable",
+    );
   };
 
   const addGasToPrivyWallet = async () => {
@@ -686,18 +721,30 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                   <span className='text-muted-foreground'>
                     {showEmptyPrivyWalletHint
                       ? `Your Privy wallet holds no ${sourceToken.symbol} on ${sourceChain?.name ?? "this network"} yet.`
-                      : "Top up your Privy wallet by card, exchange, or another wallet."}
+                      : "Top up your Privy wallet."}
                   </span>
-                  <Button
-                    aria-label='Add USDC with Privy'
-                    disabled={isBusy}
-                    onClick={() => void addUsdcToPrivyWallet()}
-                    size='compact'
-                    type='button'
-                    variant='tertiary'
-                  >
-                    Add USDC
-                  </Button>
+                  <span className='flex flex-wrap gap-2'>
+                    <Button
+                      aria-label='Buy USDC with card'
+                      disabled={isBusy}
+                      onClick={() => void buyUsdcWithCard()}
+                      size='compact'
+                      type='button'
+                      variant='primary'
+                    >
+                      Buy with card
+                    </Button>
+                    <Button
+                      aria-label='Add USDC with Privy'
+                      disabled={isBusy}
+                      onClick={() => void transferUsdcToPrivyWallet()}
+                      size='compact'
+                      type='button'
+                      variant='tertiary'
+                    >
+                      Transfer
+                    </Button>
+                  </span>
                 </div>
               )}
 

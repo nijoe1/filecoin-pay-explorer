@@ -17,6 +17,7 @@ This app requires the following environment variables:
 | `NEXT_PUBLIC_SQUID_INTEGRATOR_ID`      | Optional Squid integrator ID override          | No       |
 | `NEXT_PUBLIC_PRIVY_APP_ID`             | Privy app ID used by the console login        | Yes      |
 | `NEXT_PUBLIC_PRIVY_CLIENT_ID`          | Optional Privy client ID                      | No       |
+| `NEXT_PUBLIC_PRIVY_ONRAMP_SANDBOX`     | `true` sends card purchases to test sandboxes | No       |
 
 Squid route quotes use the public `filecoin-testing-94a4a25a-d40b-41cb-b148-e96098862` integrator ID by default.
 

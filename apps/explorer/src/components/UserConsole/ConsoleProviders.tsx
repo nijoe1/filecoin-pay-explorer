@@ -5,6 +5,7 @@ import { SynapseProvider } from "@/context/Synapse";
 import { config } from "@/services/wagmi/config";
 import { createConsoleWalletSelector } from "./console-wallet";
 import { FundingLaunchProvider } from "./FundingLaunchContext";
+import { readOnrampEnvironment } from "./privy-funding";
 import { TopUpActivityProvider } from "./TopUpActivityContext";
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
@@ -44,6 +45,8 @@ const ConsoleProviders = ({ children }: { children: React.ReactNode }) => {
         defaultChain: mainnet,
         supportedChains: [mainnet, calibration, ...SQUID_SOURCE_CHAINS],
         appearance: { walletChainType: "ethereum-only" },
+        // Card purchases go to the providers' sandboxes when NEXT_PUBLIC_PRIVY_ONRAMP_SANDBOX is set.
+        fundingMethodConfig: readOnrampEnvironment() === "sandbox" ? { moonpay: { useSandbox: true } } : undefined,
       }}
     >
       {/* Pins wagmi's active wallet to the console identity so connecting a
