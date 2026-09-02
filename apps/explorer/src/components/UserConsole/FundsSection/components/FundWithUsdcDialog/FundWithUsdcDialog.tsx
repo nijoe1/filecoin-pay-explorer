@@ -65,8 +65,8 @@ const QUOTE_DEBOUNCE_MS = 500;
 // Until the scan finds USDC somewhere: Base has the cheapest gas among the
 // Squid source networks and is where Privy's funding flows deliver USDC.
 const FALLBACK_SOURCE: UsdcSourceChoice = { chainId: BASE_CHAIN_ID, token: "" };
-// Where a card purchase or transfer can land and still be paid from here.
-const CARD_CHAINS = SQUID_SOURCE_CHAINS.filter((chain) => CARD_ONRAMP_CHAIN_IDS.includes(chain.id));
+// Where a card purchase or transfer can land and still be paid from here, Base first as the cheapest.
+const CARD_CHAINS = CARD_ONRAMP_CHAIN_IDS.flatMap((id) => SQUID_SOURCE_CHAINS.filter((chain) => chain.id === id));
 const DEPOSIT_CONTRACTS = { payments: mainnet.contracts.payments.address, usdfc: mainnet.contracts.usdfc.address };
 
 type FundWithUsdcDialogProps = {

@@ -182,7 +182,12 @@ describe("FundWithUsdcDialog", () => {
     // Nothing is funded, so no network is offered to pay with; the card panel picks where USDC lands.
     expect(optionLabels(renderer).filter((label) => String(label).includes(" · "))).toEqual([]);
     expect(text(renderer)).toContain("No USDC found on any supported network.");
-    expect(optionLabels(renderer)).toEqual(expect.arrayContaining(["Base", "Ethereum", "Arbitrum", "Polygon"]));
+    expect(optionLabels(renderer).filter((label) => !String(label).includes("("))).toEqual([
+      "Base",
+      "Ethereum",
+      "Arbitrum",
+      "Polygon",
+    ]);
 
     await act(async () => {
       renderer.root.findByProps({ "aria-label": "Connect another wallet" }).props.onClick();
