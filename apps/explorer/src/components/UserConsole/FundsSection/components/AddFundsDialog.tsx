@@ -93,7 +93,7 @@ export function AddFundsDialog({
                 onSelect={() => onSelect("card")}
               />
               <FundingMethodCard
-                description='From any connected wallet. It arrives as USDFC in your account, with nothing to sign on Filecoin.'
+                description='From another network where you hold USDC. It arrives as USDFC in your account, with nothing to sign on Filecoin.'
                 icon={<Coins className='h-5 w-5' />}
                 label='Pay with USDC'
                 onSelect={() => onSelect("usdc")}

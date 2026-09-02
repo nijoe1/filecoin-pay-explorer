@@ -307,9 +307,9 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
               "Check the details, then confirm in your wallet."
             ) : (
               <>
-                Pay USDC from any connected wallet. It is swapped to USDFC via{" "}
-                <ExternalTextLink href='https://app.squidrouter.com/'>Squid</ExternalTextLink> and deposited into your
-                account. Nothing to sign on Filecoin, no FIL needed.
+                Fund your account from another network where you hold USDC. It is swapped to USDFC via{" "}
+                <ExternalTextLink href='https://app.squidrouter.com/'>Squid</ExternalTextLink> and deposited for you.
+                Nothing to sign on Filecoin, no FIL needed.
               </>
             )}
             {recipient ? (
