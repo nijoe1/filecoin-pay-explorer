@@ -111,7 +111,7 @@ const Balance = () => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant='outline' className='w-full justify-start md:w-fit'>
+        <Button variant='outline' className='min-w-0 flex-1 justify-start md:flex-none md:w-fit'>
           <div className='flex items-center gap-3'>
             <Wallet className='size-4 text-muted-foreground' />
             {isLoading ? (
@@ -123,10 +123,11 @@ const Balance = () => {
             ) : (
               <>
                 <span className='font-mono text-sm'>{address && formatAddress(address)}</span>
-                <span className='flex items-center gap-1.5 text-sm'>
+                {/* Balances live in the dashboard too, so the smallest screens keep only the address. */}
+                <span className='hidden items-center gap-1.5 text-sm sm:flex'>
                   <FilecoinLogo className='size-4' /> {tFilBalanceFormatted} FIL
                 </span>
-                <span className='flex items-center gap-1.5 text-sm'>
+                <span className='hidden items-center gap-1.5 text-sm sm:flex'>
                   <USDFCLogo className='size-4' /> {usdfcBalanceFormatted} USDFC
                 </span>
               </>
