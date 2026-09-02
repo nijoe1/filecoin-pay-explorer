@@ -52,6 +52,7 @@ import {
   type UsdcSourceChoice,
 } from "../../data/usdc-sources";
 import { DepositProgress } from "./DepositProgress";
+import { pickFundingHelper } from "./funding-helper";
 import { PaymentSourceFields } from "./PaymentSourceFields";
 import { PendingDepositPanel } from "./PendingDepositPanel";
 import { GasShortfallPanel, TopUpWalletPanel } from "./PrivyFundingPanels";
@@ -286,23 +287,15 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   const betterSource = parsedAmount !== null ? findUsdcSourceCovering(scan.sources, debouncedAmount) : defaultSource;
   const alternative = betterSource && !isSameUsdcSource(betterSource, resolvedChoice) ? betterSource : undefined;
   const alternativeChain = alternative && SQUID_SOURCE_CHAINS.find((chain) => chain.id === alternative.chainId);
-  const holdsUsdcSomewhere = scan.sources.some((source) => source.balance > 0n);
-  // One helper at a time, in order of what blocks the payment. Buying or
-  // transferring USDC is only offered once no scanned network can pay.
-  const helper =
-    balances === undefined || !isSourceResolved
-      ? null
-      : balances.token === 0n || hasInsufficientUsdc
-        ? alternative
-          ? "elsewhere"
-          : scan.isPending
-            ? null
-            : holdsUsdcSomewhere
-              ? "insufficient"
-              : "empty"
-        : hasInsufficientGas
-          ? "gas"
-          : null;
+  const helper = pickFundingHelper({
+    hasAlternative: !!alternative,
+    hasBalances: balances !== undefined,
+    hasInsufficientGas,
+    holdsUsdcSomewhere: scan.sources.some((source) => source.balance > 0n),
+    isScanning: scan.isPending,
+    isSourceResolved,
+    isUsdcShort: balances?.token === 0n || hasInsufficientUsdc,
+  });
   const topUpMessage =
     helper === "empty"
       ? `${payerLabel[0].toUpperCase()}${payerLabel.slice(1)} holds no USDC on any supported network yet.`
