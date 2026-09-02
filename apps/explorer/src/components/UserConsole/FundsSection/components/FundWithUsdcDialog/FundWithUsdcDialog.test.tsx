@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { act, create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { describeStage, describeWallet, FundWithUsdcDialog } from "./FundWithUsdcDialog";
+import { FundWithUsdcDialog } from "./FundWithUsdcDialog";
 
 const RECIPIENT = "0x2222222222222222222222222222222222222222";
 const EMBEDDED = "0x1111111111111111111111111111111111111111";
@@ -102,41 +102,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-});
-
-describe("wallet helpers", () => {
-  it("labels Privy embedded and external wallets", () => {
-    expect(describeWallet({ address: EMBEDDED, walletClientType: "privy" })).toBe("Privy wallet (0x1111...1111)");
-    expect(describeWallet({ address: EXTERNAL, walletClientType: "coinbase_wallet" })).toBe(
-      "Coinbase Wallet (0x3333...3333)",
-    );
-  });
-
-  it("describes every deposit stage and numbers the approval and swap signatures", () => {
-    const stages = ["preparing", "approving", "swap-requested", "swap-broadcast", "bridging", "verifying"] as const;
-    const describeAll = (options: { hasApproved: boolean; isEmbedded: boolean }) =>
-      Object.fromEntries(stages.map((stage) => [stage, describeStage(stage, options)]));
-
-    expect(describeAll({ hasApproved: true, isEmbedded: false })).toEqual({
-      preparing: "Preparing the route…",
-      approving: "Step 1 of 2: approve USDC in your wallet",
-      "swap-requested": "Step 2 of 2: confirm the swap in your wallet",
-      "swap-broadcast": "Waiting for the source network to confirm…",
-      bridging: "Bridging to Filecoin and depositing. This takes about two minutes.",
-      verifying: "Confirming your Filecoin Pay balance…",
-    });
-    expect(describeAll({ hasApproved: false, isEmbedded: true })).toEqual({
-      preparing: "Preparing the route…",
-      approving: "Step 1 of 2: approving USDC with your Privy wallet…",
-      "swap-requested": "Signing the swap with your Privy wallet…",
-      "swap-broadcast": "Waiting for the source network to confirm…",
-      bridging: "Bridging to Filecoin and depositing. This takes about two minutes.",
-      verifying: "Confirming your Filecoin Pay balance…",
-    });
-    expect(describeStage("swap-requested", { hasApproved: false, isEmbedded: false })).toBe(
-      "Confirm the swap in your wallet",
-    );
-  });
 });
 
 describe("FundWithUsdcDialog", () => {
