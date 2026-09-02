@@ -49,7 +49,16 @@ vi.mock("@/components/UserConsole/TopUpActivityContext", () => ({
   }),
 }));
 vi.mock("@/components/UserConsole/States", () => ({
-  AccountNotFound: () => <div>Account not found</div>,
+  AccountNotFound: ({ onGuidedTopUp }: { onGuidedTopUp?: () => void }) => (
+    <div>
+      Account not found
+      {onGuidedTopUp ? (
+        <button data-open-top-up onClick={onGuidedTopUp} type='button'>
+          Fund with another token
+        </button>
+      ) : null}
+    </div>
+  ),
   ErrorState: () => <div>Account error</div>,
   NotConnected: () => <div>Not connected</div>,
   UnsupportedChain: () => <div>Unsupported network</div>,
@@ -89,16 +98,10 @@ vi.mock("@/components/UserConsole", () => ({
   TopUpDialogController: ({
     accountId,
     children,
-    showTrigger,
   }: {
     accountId: string;
     children?: (openTopUp: () => void, isOpen: boolean) => React.ReactNode;
-    showTrigger?: boolean;
-  }) => (
-    <MockTopUpDialogController accountId={accountId} showTrigger={showTrigger}>
-      {children}
-    </MockTopUpDialogController>
-  ),
+  }) => <MockTopUpDialogController accountId={accountId}>{children}</MockTopUpDialogController>,
 }));
 vi.mock("@/hooks/useAccountDetails", () => ({
   useAccountDetails: (address: string, options: { networkOverride: string }) => {
@@ -111,11 +114,9 @@ vi.mock("@/hooks/useAccountDetails", () => ({
 function MockTopUpDialogController({
   accountId,
   children,
-  showTrigger,
 }: {
   accountId: string;
   children?: (openTopUp: () => void, isOpen: boolean) => React.ReactNode;
-  showTrigger?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -136,11 +137,6 @@ function MockTopUpDialogController({
   return (
     <div data-top-up-account-id={accountId} data-top-up-open={open}>
       {children?.(openTopUp, open)}
-      {showTrigger ? (
-        <button data-open-top-up onClick={openTopUp} type='button'>
-          Fund with another token
-        </button>
-      ) : null}
     </div>
   );
 }

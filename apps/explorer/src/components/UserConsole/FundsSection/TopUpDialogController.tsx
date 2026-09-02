@@ -3,7 +3,6 @@ import { skipToken, useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useConnection } from "wagmi";
-import { useFundingLaunch } from "@/components/UserConsole/FundingLaunchContext";
 import { getChain } from "@/constants/chains";
 import useSynapse from "@/hooks/useSynapse";
 import { useTopUpActivity } from "../TopUpActivityContext";
@@ -14,12 +13,10 @@ import { getSquidAcquisitionStorageKey, hasSavedSquidAcquisition } from "./data/
 interface TopUpDialogControllerProps {
   accountId: string;
   children?: (openTopUp: () => void, isOpen: boolean) => ReactNode;
-  showTrigger?: boolean;
 }
 
-export function TopUpDialogController({ accountId, children, showTrigger = false }: TopUpDialogControllerProps) {
+export function TopUpDialogController({ accountId, children }: TopUpDialogControllerProps) {
   const [open, setOpen] = useState(false);
-  const { openUsdcFunding } = useFundingLaunch();
   const [hasSavedAcquisition, setHasSavedAcquisition] = useState(false);
   const [recoveryRevision, setRecoveryRevision] = useState(0);
   const didAutoOpenSavedAcquisition = useRef(false);
@@ -119,13 +116,6 @@ export function TopUpDialogController({ accountId, children, showTrigger = false
         </div>
       )}
       {children?.(openTopUp, open)}
-      {showTrigger && (
-        <div className='flex justify-center'>
-          <Button aria-label='Fund with USDC' onClick={openUsdcFunding} variant='primary'>
-            Fund with USDC
-          </Button>
-        </div>
-      )}
       <GuidedTopUpDialog
         accountId={accountId}
         accountSummary={accountSummary}

@@ -1,59 +1,63 @@
+"use client";
+
 import { Button } from "@filecoin-foundation/ui-filecoin/Button";
 import { EmptyStateCard } from "@filecoin-foundation/ui-filecoin/EmptyStateCard";
 import { WalletIcon } from "@phosphor-icons/react";
-import { ArrowDownCircle, Shield } from "lucide-react";
 import { useState } from "react";
-import { ApproveOperatorDialog } from "../ApproveOperatorDialog";
 import DepositAndApproveDialog from "../DepositAndApproveDialog";
 import { DepositDialog } from "../DepositDialog";
+import { useFundingLaunch } from "../FundingLaunchContext";
+import { AddFundsDialog, type AddFundsMethod } from "../FundsSection/components";
 
-const AccountNotFound = () => {
-  const [depositDialogOpen, setDepositDialogOpen] = useState(false);
-  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
-  const [depositAndApproveDialogOpen, setDepositAndApproveDialogOpen] = useState(false);
+type AccountNotFoundProps = {
+  /** Opens the guided any-token swap; absent where Squid funding is unavailable. */
+  onGuidedTopUp?: () => void;
+};
+
+/**
+ * The first thing a new account sees. One primary action opens the same
+ * add-funds picker the dashboard uses, so the paths that work for an empty
+ * wallet (card, USDC, a swap) sit next to a plain deposit for USDFC holders.
+ */
+const AccountNotFound = ({ onGuidedTopUp }: AccountNotFoundProps) => {
+  const { openUsdcFunding } = useFundingLaunch();
+  const [addFundsOpen, setAddFundsOpen] = useState(false);
+  const [depositOpen, setDepositOpen] = useState(false);
+  const [depositAndApproveOpen, setDepositAndApproveOpen] = useState(false);
+  const squidAvailable = Boolean(onGuidedTopUp);
+
+  const chooseMethod = (method: AddFundsMethod) => {
+    setAddFundsOpen(false);
+    if (method === "usdc") openUsdcFunding();
+    else if (method === "squid") onGuidedTopUp?.();
+    else setDepositOpen(true);
+  };
 
   return (
     <EmptyStateCard
       titleTag='h2'
       icon={WalletIcon}
       title='Welcome to Filecoin Pay'
-      description="Your account hasn't been indexed yet. Get started by depositing funds or approving an service."
+      description='Add funds to your account to start paying for services.'
     >
-      <div className='flex flex-col gap-4 mt-6'>
-        <div className='flex flex-col sm:flex-row gap-3'>
-          <Button onClick={() => setDepositDialogOpen(true)} variant='ghost' size='compact'>
-            <span className='flex items-center gap-2'>
-              <ArrowDownCircle className='h-5 w-5' />
-              Deposit Funds
-            </span>
-          </Button>
-          <Button onClick={() => setApproveDialogOpen(true)} variant='ghost' size='compact'>
-            <span className='flex items-center gap-2'>
-              <Shield className='h-5 w-5' />
-              Approve Service
-            </span>
-          </Button>
-          <Button onClick={() => setDepositAndApproveDialogOpen(true)} size='compact' variant='primary'>
-            <span className='flex items-center gap-2'>
-              <ArrowDownCircle className='h-5 w-5' />
-              Deposit and Approve Service
-            </span>
-          </Button>
-        </div>
-        <p className='text-xs text-muted-foreground text-center'>
-          Start by depositing funds or approving a service to get started
-        </p>
+      <div className='mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center'>
+        <Button onClick={() => setAddFundsOpen(true)} size='compact' variant='primary'>
+          Add funds
+        </Button>
+        <Button onClick={() => setDepositAndApproveOpen(true)} size='compact' variant='ghost'>
+          Deposit and approve a service
+        </Button>
       </div>
 
-      {/* Deposit Dialog */}
-      {/* This account has no indexed tokens by definition, so the picker only offers address entry. */}
-      <DepositDialog tokens={[]} open={depositDialogOpen} onOpenChange={setDepositDialogOpen} />
-
-      {/* Deposit and Approve Dialog */}
-      <DepositAndApproveDialog open={depositAndApproveDialogOpen} onOpenChange={setDepositAndApproveDialogOpen} />
-
-      {/* Approve Operator Dialog */}
-      <ApproveOperatorDialog operators={[]} tokens={[]} open={approveDialogOpen} onOpenChange={setApproveDialogOpen} />
+      <AddFundsDialog
+        onOpenChange={setAddFundsOpen}
+        onSelect={chooseMethod}
+        open={addFundsOpen}
+        squidAvailable={squidAvailable}
+      />
+      {/* No indexed tokens yet, so the deposit picker only offers address entry. */}
+      <DepositDialog tokens={[]} open={depositOpen} onOpenChange={setDepositOpen} />
+      <DepositAndApproveDialog open={depositAndApproveOpen} onOpenChange={setDepositAndApproveOpen} />
     </EmptyStateCard>
   );
 };

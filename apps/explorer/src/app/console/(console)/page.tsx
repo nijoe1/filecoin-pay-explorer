@@ -56,7 +56,11 @@ const AccountSections = ({
   if (!account) {
     return (
       <>
-        {error ? <ErrorState error={error} /> : <AccountNotFound />}
+        {error ? (
+          <ErrorState error={error} />
+        ) : (
+          <AccountNotFound onGuidedTopUp={network === "mainnet" ? onGuidedTopUp : undefined} />
+        )}
         {alertsBanner}
       </>
     );
@@ -113,17 +117,11 @@ const UserConsole = () => {
       />
     ) : null;
 
-  const showTopUpTrigger = !accountQuery.isLoading && !accountQuery.error && !accountQuery.data;
-
   return (
     <div className='flex flex-col gap-15'>
       {/* The (console) layout gates on a connected wallet, so address is set here. */}
       {address && canMountTopUpController ? (
-        <TopUpDialogController
-          accountId={accountQuery.data?.id ?? address}
-          key={address}
-          showTrigger={isFilecoinMainnet && showTopUpTrigger}
-        >
+        <TopUpDialogController accountId={accountQuery.data?.id ?? address} key={address}>
           {(openTopUp, isOpen) => (isSquidSourceChain && !isOpen ? <UnsupportedChain /> : accountSections(openTopUp))}
         </TopUpDialogController>
       ) : canLoadFilecoinConsole ? (
