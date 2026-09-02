@@ -50,8 +50,8 @@ const Balance = () => {
     query: { enabled: !!address },
   });
 
-  const usdfcBalanceFormatted = usdfcBalance ? Number(formatEther(usdfcBalance)).toFixed(2) : "0";
-  const tFilBalanceFormatted = tFilBalance ? Number(formatEther(tFilBalance.value)).toFixed(2) : "0";
+  const usdfcBalanceFormatted = Number(formatEther(usdfcBalance ?? 0n)).toFixed(2);
+  const tFilBalanceFormatted = Number(formatEther(tFilBalance?.value ?? 0n)).toFixed(2);
   const isLoading = isLoadingtFilBalance || isLoadingUSDFCBalance;
   const shortAddress = address ? formatAddress(address) : "";
 

@@ -92,7 +92,7 @@ describe("Balance wallet menu", () => {
   it("keeps the trigger compact: short address and the two balances without unit text", async () => {
     const renderer = await render();
     const trigger = renderer.root.find((node) => node.type === "button" && !("data-menu-item" in node.props));
-    expect(stringChildren(trigger)).toEqual([SHORT_ADDRESS, "0.00", "0"]);
+    expect(stringChildren(trigger)).toEqual([SHORT_ADDRESS, "0.00", "0.00"]);
     await act(async () => renderer.unmount());
   });
 
