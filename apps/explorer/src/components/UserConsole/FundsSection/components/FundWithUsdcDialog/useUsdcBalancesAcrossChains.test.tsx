@@ -1,7 +1,7 @@
 import { act, create } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 import { SQUID_SOURCE_CHAINS } from "@/constants/chains";
-import { buildUsdcSourceQuery, useUsdcBalancesAcrossChains } from "./useUsdcBalancesAcrossChains";
+import { buildUsdcSourceQuery, USDC_SCAN_CHAINS, useUsdcBalancesAcrossChains } from "./useUsdcBalancesAcrossChains";
 
 const OWNER = "0x1111111111111111111111111111111111111111" as const;
 const BASE_USDC = {
@@ -63,8 +63,12 @@ describe("useUsdcBalancesAcrossChains", () => {
   }
   const squid = { integratorId: "test" };
 
-  it("scans every Squid source network for the checksummed wallet and ranks what comes back", async () => {
-    queries.results = SQUID_SOURCE_CHAINS.map((chain) => ({
+  it("scans every Squid source network but Filecoin for the checksummed wallet and ranks what comes back", async () => {
+    expect(USDC_SCAN_CHAINS.map((chain) => chain.id)).toEqual(
+      SQUID_SOURCE_CHAINS.map((chain) => chain.id).filter((id) => id !== 314),
+    );
+    expect(USDC_SCAN_CHAINS.length).toBeGreaterThan(0);
+    queries.results = USDC_SCAN_CHAINS.map((chain) => ({
       data:
         chain.id === 8453
           ? [{ balance: 5_000_000n, chainId: 8453, token: BASE_USDC }]
@@ -78,7 +82,7 @@ describe("useUsdcBalancesAcrossChains", () => {
       create(<Harness enabled owner={OWNER.toLowerCase()} squid={squid} />);
     });
     expect(queries.received.map((q) => q.queryKey)).toEqual(
-      SQUID_SOURCE_CHAINS.map((chain) => ["squid-usdc-sources", chain.id, OWNER]),
+      USDC_SCAN_CHAINS.map((chain) => ["squid-usdc-sources", chain.id, OWNER]),
     );
     expect(queries.received.every((q) => q.enabled)).toBe(true);
     expect(latest.sources.map((s) => [s.chainId, s.balance])).toEqual([

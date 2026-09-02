@@ -2,12 +2,19 @@ import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { type Address, getAddress } from "viem";
 import { useConfig } from "wagmi";
 import { getPublicClient } from "wagmi/actions";
-import { SQUID_SOURCE_CHAINS } from "@/constants/chains";
+import { mainnet, SQUID_SOURCE_CHAINS } from "@/constants/chains";
 import type { SquidClient } from "../../data/squid-deposit-route";
 import { usdcTokensQueryOptions } from "../../data/squid-usdc-tokens";
 import { type BalanceReader, rankUsdcSources, readUsdcSources, type UsdcSource } from "../../data/usdc-sources";
 
 type ScanChainId = (typeof SQUID_SOURCE_CHAINS)[number]["id"];
+
+/**
+ * The networks a USDC payment can come from: every Squid source except
+ * Filecoin itself. Squid lists bridged USDC there too, but paying from
+ * Filecoin would need FIL for gas, which this dialog promises not to.
+ */
+export const USDC_SCAN_CHAINS = SQUID_SOURCE_CHAINS.filter((chain) => chain.id !== mainnet.id);
 
 /** One network's part of the scan: Squid's USDC list, then one multicall for the balances. */
 export function buildUsdcSourceQuery({
@@ -37,8 +44,8 @@ export function buildUsdcSourceQuery({
 }
 
 /**
- * Where the paying wallet's USDC actually is: every Squid source network is
- * scanned at once, and the result comes back largest balance first.
+ * Where the paying wallet's USDC actually is: every scan network is asked at
+ * once, and the result comes back largest balance first.
  */
 export function useUsdcBalancesAcrossChains({
   enabled,
@@ -54,7 +61,7 @@ export function useUsdcBalancesAcrossChains({
   const checksummedOwner = owner ? getAddress(owner) : undefined;
   const isEnabled = enabled && !!checksummedOwner;
   const results = useQueries({
-    queries: SQUID_SOURCE_CHAINS.map((chain) => ({
+    queries: USDC_SCAN_CHAINS.map((chain) => ({
       ...buildUsdcSourceQuery({
         chainId: chain.id,
         getClient: (chainId) => getPublicClient(config, { chainId: chainId as ScanChainId }),
