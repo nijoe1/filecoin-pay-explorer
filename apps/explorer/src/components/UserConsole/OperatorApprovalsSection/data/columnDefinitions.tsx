@@ -38,8 +38,8 @@ export const columns = [
           {symbol === "USDFC" ? (
             <USDFCLogo className='w-6 h-6' />
           ) : (
-            <div className='h-8 w-8 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center'>
-              <span className='text-sm font-semibold text-amber-700 dark:text-amber-400'>{symbol.charAt(0)}</span>
+            <div className='flex h-8 w-8 items-center justify-center rounded-full bg-muted'>
+              <span className='text-sm font-semibold text-muted-foreground'>{symbol.charAt(0)}</span>
             </div>
           )}
           <span className='font-medium'>{symbol}</span>

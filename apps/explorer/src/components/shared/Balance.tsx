@@ -145,7 +145,7 @@ const Balance = () => {
           onClick={copyToClipboard}
           className='cursor-pointer py-2'
         >
-          {copied ? <Check className='text-green-600' /> : <Copy />}
+          {copied ? <Check className='text-primary' /> : <Copy />}
           <span className='text-base'>{copied ? "Copied" : "Copy address"}</span>
         </DropdownMenuItem>
 
@@ -181,7 +181,7 @@ const Balance = () => {
               }}
               className='cursor-pointer py-2'
             >
-              <ShieldCheck className={reviewOn ? "text-green-600" : "text-muted-foreground"} />
+              <ShieldCheck className={reviewOn ? "text-primary" : "text-muted-foreground"} />
               <span className='text-base'>Review before signing: {reviewOn ? "On" : "Off"}</span>
             </DropdownMenuItem>
           ) : null}

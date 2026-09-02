@@ -549,10 +549,9 @@ export function GuidedTopUpDialog({
             <Input
               disabled={acquiredAmount !== null || acquisitionState !== "idle"}
               id='guided-top-up-amount'
-              min='0'
               onChange={setAmount}
-              step='any'
-              type='number'
+              type='text'
+              inputMode='decimal'
               value={amount}
             />
             {amount !== "" && parsedAmount === null && acquiredAmount === null && (

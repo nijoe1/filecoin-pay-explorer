@@ -20,6 +20,7 @@ import { useContractTransaction } from "@/hooks/useContractTransaction";
 import useSynapse from "@/hooks/useSynapse";
 import { formatAddress } from "@/utils/formatter";
 import { daysToEpochs } from "@/utils/lockup-period";
+import { createDialogCloseGuard } from "./FundsSection/data/dialog-close-guard";
 
 interface ApproveOperatorDialogProps {
   operators?: Operator[];
@@ -258,10 +259,17 @@ export const ApproveOperatorDialog: React.FC<ApproveOperatorDialogProps> = ({
   const canSubmit =
     isOperatorValid && isTokenValid && daysToEpochs(maxLockupPeriod) !== null && !isSubmitting && !isExecuting;
 
+  const handleOpenChange = createDialogCloseGuard({
+    blockReason: () =>
+      isSubmitting || isExecuting ? "Wait for the approval to finish before closing this dialog." : null,
+    onClose: () => onOpenChange(false),
+    onOpen: () => onOpenChange(true),
+  });
+
   return (
     <>
       {reviewDialog}
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className='sm:max-w-[600px] max-h-[90vh] overflow-y-auto'>
           <DialogHeader>
             <DialogTitle>Approve a service</DialogTitle>
@@ -325,7 +333,7 @@ export const ApproveOperatorDialog: React.FC<ApproveOperatorDialogProps> = ({
                 {operatorInput && (
                   <div className='mt-2'>
                     {isOperatorValid ? (
-                      <div className='flex items-center gap-2 text-sm text-green-600 dark:text-green-400'>
+                      <div className='flex items-center gap-2 text-sm text-primary'>
                         <CheckCircle2 className='h-4 w-4' />
                         <span>Valid operator address</span>
                       </div>
@@ -466,7 +474,8 @@ export const ApproveOperatorDialog: React.FC<ApproveOperatorDialogProps> = ({
                   </Label>
                   <Input
                     id='lockupAllowance'
-                    type='number'
+                    type='text'
+                    inputMode='decimal'
                     placeholder='0.0'
                     value={lockupAllowance}
                     onChange={setLockupAllowance}
@@ -479,7 +488,8 @@ export const ApproveOperatorDialog: React.FC<ApproveOperatorDialogProps> = ({
                   </Label>
                   <Input
                     id='rateAllowance'
-                    type='number'
+                    type='text'
+                    inputMode='decimal'
                     placeholder='0.0'
                     value={rateAllowance}
                     onChange={setRateAllowance}

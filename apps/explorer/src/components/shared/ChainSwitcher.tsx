@@ -25,10 +25,10 @@ const ChainSwitcher = ({ chainId }: ChainSwitcherProps) => {
       <DropdownMenuTrigger asChild>
         <Button variant='outline' className='shrink-0 justify-between'>
           <span className='flex items-center gap-2'>
-            <Globe className='size-4 text-zinc-500' />
+            <Globe className='size-4 text-muted-foreground' />
             {currentChain.label}
           </span>
-          <ChevronDown className='size-4 text-zinc-500' />
+          <ChevronDown className='size-4 text-muted-foreground' />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align='end'>

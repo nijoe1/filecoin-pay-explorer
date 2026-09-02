@@ -18,6 +18,7 @@ import { useContractTransaction } from "@/hooks/useContractTransaction";
 import useSynapse from "@/hooks/useSynapse";
 import { formatAddress, formatToken, isUnlimitedValue } from "@/utils/formatter";
 import { daysToEpochs } from "@/utils/lockup-period";
+import { createDialogCloseGuard } from "./FundsSection/data/dialog-close-guard";
 
 interface IncreaseApprovalDialogProps {
   approval: OperatorApproval;
@@ -106,8 +107,15 @@ export const IncreaseApprovalDialog: React.FC<IncreaseApprovalDialogProps> = ({ 
 
   const canSubmit = hasIncrease && !isSubmitting && !isExecuting;
 
+  const handleOpenChange = createDialogCloseGuard({
+    blockReason: () =>
+      isSubmitting || isExecuting ? "Wait for the transaction to finish before closing this dialog." : null,
+    onClose: () => onOpenChange(false),
+    onOpen: () => onOpenChange(true),
+  });
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className='sm:max-w-[500px]'>
         <DialogHeader>
           <DialogTitle>Increase limits</DialogTitle>
@@ -183,7 +191,8 @@ export const IncreaseApprovalDialog: React.FC<IncreaseApprovalDialogProps> = ({ 
                 </Label>
                 <Input
                   id='lockupIncrease'
-                  type='number'
+                  type='text'
+                  inputMode='decimal'
                   placeholder='0.0'
                   value={lockupIncrease}
                   onChange={setLockupIncrease}
@@ -196,7 +205,8 @@ export const IncreaseApprovalDialog: React.FC<IncreaseApprovalDialogProps> = ({ 
                 </Label>
                 <Input
                   id='rateIncrease'
-                  type='number'
+                  type='text'
+                  inputMode='decimal'
                   placeholder='0.0'
                   value={rateIncrease}
                   onChange={setRateIncrease}
@@ -209,7 +219,8 @@ export const IncreaseApprovalDialog: React.FC<IncreaseApprovalDialogProps> = ({ 
                 </Label>
                 <Input
                   id='maxLockupPeriodIncrease'
-                  type='number'
+                  type='text'
+                  inputMode='decimal'
                   placeholder='0.0'
                   value={maxLockupPeriodIncrease}
                   onChange={setMaxLockupPeriodIncrease}

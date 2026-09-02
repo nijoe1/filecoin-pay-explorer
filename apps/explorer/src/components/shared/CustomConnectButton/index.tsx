@@ -26,7 +26,7 @@ const CustomConnectButton = () => {
         Connect a wallet instead
       </Button>
       <p className='text-center text-xs text-muted-foreground'>
-        Logging in with email or Google creates a wallet for you. Connecting a wallet uses it directly, with no account.
+        Email or Google login creates a wallet for you; connecting a wallet uses it as is.
       </p>
     </div>
   );

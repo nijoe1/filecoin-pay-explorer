@@ -21,6 +21,7 @@ import useSynapse from "@/hooks/useSynapse";
 import type { AccountInfo } from "@/types";
 import { WITHDRAW_MAX_BUFFER_EPOCHS } from "@/utils/constants";
 import { formatAddress } from "@/utils/formatter";
+import { createDialogCloseGuard } from "./FundsSection/data/dialog-close-guard";
 
 interface WithdrawDialogProps {
   userToken: UserToken;
@@ -170,10 +171,16 @@ export const WithdrawDialog: React.FC<WithdrawDialogProps> = ({ userToken, open,
   const canWithdraw = accountInfo && parseUnits(amount, currentToken.decimals) <= (accountInfo as AccountInfo)[2];
   const canExecute = !isExecuting && canWithdraw && !isLoadingAccountInfo;
 
+  const handleOpenChange = createDialogCloseGuard({
+    blockReason: () => (isExecuting ? "Wait for the withdrawal to finish before closing this dialog." : null),
+    onClose: () => onOpenChange(false),
+    onOpen: () => onOpenChange(true),
+  });
+
   return (
     <>
       {reviewDialog}
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className='sm:max-w-[500px]'>
           <DialogHeader>
             <DialogTitle>Withdraw {currentToken?.symbol || "Tokens"}</DialogTitle>
@@ -235,12 +242,11 @@ export const WithdrawDialog: React.FC<WithdrawDialogProps> = ({ userToken, open,
                 <div className='relative'>
                   <Input
                     id='amount'
-                    type='number'
+                    type='text'
+                    inputMode='decimal'
                     placeholder='0.0'
                     value={amount}
                     onChange={setAmount}
-                    min='0'
-                    step='any'
                     disabled={isExecuting}
                     className='text-lg pr-16'
                   />
@@ -262,7 +268,7 @@ export const WithdrawDialog: React.FC<WithdrawDialogProps> = ({ userToken, open,
                     Max includes a small buffer to prevent transaction failures from ongoing payment streams.
                   </p>
                 )}
-                <p className='text-xs text-red-500'>
+                <p className='text-xs text-destructive'>
                   {canWithdraw ? "" : "Insufficient Available funds in contract account"}
                 </p>
               </div>

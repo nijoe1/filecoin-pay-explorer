@@ -487,12 +487,11 @@ export const DepositDialog = ({ depositToken, tokens, open, onOpenChange }: Depo
                 <div className='relative'>
                   <Input
                     id='amount'
-                    type='number'
+                    type='text'
+                    inputMode='decimal'
                     placeholder='0.0'
                     value={amount}
                     onChange={setAmount}
-                    min='0'
-                    step='any'
                     disabled={isBusy}
                     className='text-lg pr-16'
                   />

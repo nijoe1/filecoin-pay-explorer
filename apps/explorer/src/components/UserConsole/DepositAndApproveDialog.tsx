@@ -18,6 +18,7 @@ import { useContractTransaction } from "@/hooks/useContractTransaction";
 import useSynapse from "@/hooks/useSynapse";
 import { daysToEpochs } from "@/utils/lockup-period";
 import { getPermitSignature } from "@/utils/permit";
+import { createDialogCloseGuard } from "./FundsSection/data/dialog-close-guard";
 
 interface DepositAndApproveDialogProps {
   open: boolean;
@@ -241,10 +242,17 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
   const canSubmit =
     isOperatorValid && isTokenValid && daysToEpochs(maxLockupPeriod) !== null && !isSubmitting && !isExecuting;
 
+  const handleOpenChange = createDialogCloseGuard({
+    blockReason: () =>
+      isSubmitting || isExecuting ? "Wait for the transaction to finish before closing this dialog." : null,
+    onClose: () => onOpenChange(false),
+    onOpen: () => onOpenChange(true),
+  });
+
   return (
     <>
       {reviewDialog}
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className='sm:max-w-[600px] max-h-[90vh] overflow-y-auto'>
           <DialogHeader>
             <DialogTitle>Deposit and approve a service</DialogTitle>
@@ -341,12 +349,11 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
                 <div className='relative'>
                   <Input
                     id='amount'
-                    type='number'
+                    type='text'
+                    inputMode='decimal'
                     placeholder='0.0'
                     value={tokenAmount}
                     onChange={setTokenAmount}
-                    min='0'
-                    step='any'
                     disabled={isSubmitting}
                     className='text-lg pr-16'
                   />
@@ -385,7 +392,7 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
                 {operatorInput && (
                   <div className='mt-2'>
                     {isOperatorValid ? (
-                      <div className='flex items-center gap-2 text-sm text-green-600 dark:text-green-400'>
+                      <div className='flex items-center gap-2 text-sm text-primary'>
                         <CheckCircle2 className='h-4 w-4' />
                         <span>Valid operator address</span>
                       </div>
@@ -421,7 +428,8 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
                   </Label>
                   <Input
                     id='lockupAllowance'
-                    type='number'
+                    type='text'
+                    inputMode='decimal'
                     placeholder='0.0'
                     value={lockupAllowance}
                     onChange={setLockupAllowance}
@@ -434,7 +442,8 @@ const DepositAndApproveDialog: React.FC<DepositAndApproveDialogProps> = ({ open,
                   </Label>
                   <Input
                     id='rateAllowance'
-                    type='number'
+                    type='text'
+                    inputMode='decimal'
                     placeholder='0.0'
                     value={rateAllowance}
                     onChange={setRateAllowance}

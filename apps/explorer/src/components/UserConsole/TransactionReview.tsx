@@ -1,5 +1,5 @@
 "use client";
-import { Button } from "@filecoin-pay/ui/components/button";
+import { Button } from "@filecoin-foundation/ui-filecoin/Button";
 import {
   Dialog,
   DialogContent,
@@ -104,7 +104,7 @@ const TransactionReviewDialog = ({
       <DialogContent className='sm:max-w-md'>
         <DialogHeader>
           <DialogTitle className='flex items-center gap-2'>
-            <ShieldCheck className='size-5 text-green-600' />
+            <ShieldCheck className='size-5 text-primary' />
             Review before signing
           </DialogTitle>
           <DialogDescription>
@@ -116,7 +116,7 @@ const TransactionReviewDialog = ({
           <div className='px-3 py-2 font-semibold'>{request.title}</div>
           {request.rows.map((row) => (
             <div key={row.label} className='flex items-start justify-between gap-4 px-3 py-2'>
-              <span className='text-zinc-500 shrink-0'>{row.label}</span>
+              <span className='shrink-0 text-muted-foreground'>{row.label}</span>
               <span className='font-mono text-right break-all'>{row.value}</span>
             </div>
           ))}
@@ -125,18 +125,18 @@ const TransactionReviewDialog = ({
         <button
           type='button'
           onClick={() => setShowDetails((s) => !s)}
-          className='flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-800 w-fit'
+          className='flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground'
         >
           <ChevronDown className={`size-3 transition-transform ${showDetails ? "rotate-180" : ""}`} />
           Technical details
         </button>
         {showDetails ? (
-          <pre className='max-h-40 overflow-auto rounded-md bg-zinc-50 border p-2 text-[11px] leading-snug whitespace-pre-wrap break-all'>
+          <pre className='max-h-40 overflow-auto rounded-md border bg-muted p-2 text-[11px] leading-snug whitespace-pre-wrap break-all'>
             {request.details}
           </pre>
         ) : null}
 
-        <label className='flex items-center gap-2 text-sm text-zinc-600 cursor-pointer'>
+        <label className='flex cursor-pointer items-center gap-2 text-sm text-muted-foreground'>
           <input
             type='checkbox'
             checked={dontAskAgain}
@@ -147,10 +147,10 @@ const TransactionReviewDialog = ({
         </label>
 
         <DialogFooter>
-          <Button variant='ghost' size='sm' onClick={() => onSettle(false)}>
+          <Button onClick={() => onSettle(false)} size='compact' type='button' variant='ghost'>
             Cancel
           </Button>
-          <Button variant='default' size='sm' onClick={confirm}>
+          <Button onClick={confirm} size='compact' type='button' variant='primary'>
             Confirm and sign
           </Button>
         </DialogFooter>
