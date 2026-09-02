@@ -3,11 +3,13 @@ import { Button } from "@filecoin-pay/ui/components/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@filecoin-pay/ui/components/dropdown-menu";
+import { Skeleton } from "@filecoin-pay/ui/components/skeleton";
 import { useConnectWallet, useExportWallet, usePrivy } from "@privy-io/react-auth";
 import {
   ArrowUpRightIcon,
@@ -33,11 +35,15 @@ import { isReviewEnabled, setReviewEnabled, useIsEmbeddedSigner } from "@/compon
 import useSynapse from "@/hooks/useSynapse";
 import { formatAddress } from "@/utils/formatter";
 
+/**
+ * The wallet pill and its menu: who the console is acting as, how to add
+ * funds, wallet settings, and last of all the way out.
+ */
 const Balance = () => {
   const { constants } = useSynapse();
-  const { address, chainId } = useAccount();
+  const { address, chainId, connector } = useAccount();
   const { disconnect } = useDisconnect();
-  const { authenticated, logout } = usePrivy();
+  const { authenticated, logout, user } = usePrivy();
   const { connectWallet } = useConnectWallet();
   const { exportWallet } = useExportWallet();
   const { openUsdcFunding } = useFundingLaunch();
@@ -62,6 +68,12 @@ const Balance = () => {
   const usdfcBalanceFormatted = usdfcBalance ? Number(formatEther(usdfcBalance)).toFixed(2) : "0";
   const tFilBalanceFormatted = tFilBalance ? Number(formatEther(tFilBalance.value)).toFixed(2) : "0";
   const isLoading = isLoadingtFilBalance || isLoadingUSDFCBalance;
+
+  // Who the console acts as: the login for Privy sessions, the wallet app otherwise.
+  const loginName = user?.email?.address ?? user?.google?.email ?? user?.google?.name;
+  const identity = authenticated
+    ? `Logged in as ${loginName ?? "a Privy user"}`
+    : `${connector?.name ?? "External"} wallet`;
 
   const copyToClipboard = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -88,103 +100,115 @@ const Balance = () => {
     }
   };
 
+  const signOut = () => {
+    // Privy sessions (email/social/SIWE) need logout; a wagmi disconnect alone
+    // would leave the session alive and re-connect the wallet on reload.
+    // Connect-only wallets just disconnect.
+    if (authenticated) void logout();
+    disconnect();
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant='outline' className='w-full justify-start md:w-fit'>
           <div className='flex items-center gap-3'>
-            <Wallet className='size-4 text-zinc-500' />
+            <Wallet className='size-4 text-muted-foreground' />
             {isLoading ? (
-              "Loading..."
+              <>
+                <Skeleton className='h-4 w-24' />
+                <Skeleton className='h-4 w-14' />
+                <Skeleton className='h-4 w-16' />
+              </>
             ) : (
               <>
-                <span className='text-sm font-mono'>{address && formatAddress(address)}</span>
+                <span className='font-mono text-sm'>{address && formatAddress(address)}</span>
                 <span className='flex items-center gap-1.5 text-sm'>
-                  <FilecoinLogo className='size-4' /> {tFilBalanceFormatted}
+                  <FilecoinLogo className='size-4' /> {tFilBalanceFormatted} FIL
                 </span>
                 <span className='flex items-center gap-1.5 text-sm'>
-                  <USDFCLogo className='size-4' /> {usdfcBalanceFormatted}
+                  <USDFCLogo className='size-4' /> {usdfcBalanceFormatted} USDFC
                 </span>
               </>
             )}
           </div>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className='w-64' align='start'>
-        <DropdownMenuLabel className='text-zinc-600 py-2'>Wallet</DropdownMenuLabel>
+      <DropdownMenuContent className='w-72' align='start'>
+        <DropdownMenuLabel className='grid gap-0.5 py-2 font-normal'>
+          <span className='text-sm font-medium text-foreground'>{identity}</span>
+          <span className='font-mono text-xs text-muted-foreground'>{address}</span>
+        </DropdownMenuLabel>
         <DropdownMenuItem
           onSelect={(e) => e.preventDefault()}
           onClick={copyToClipboard}
           className='cursor-pointer py-2'
         >
-          <Copy />
-          <span className='text-base text-zinc-950 font-mono'>{address && formatAddress(address)}</span>
-          {copied && <Check className='text-green-500 ml-auto' />}
+          {copied ? <Check className='text-green-600' /> : <Copy />}
+          <span className='text-base'>{copied ? "Copied" : "Copy address"}</span>
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => {
-            // Privy sessions (email/social/SIWE) need logout; a wagmi
-            // disconnect alone would leave the session alive and re-connect
-            // the wallet on reload. Connect-only wallets just disconnect.
-            if (authenticated) {
-              void logout();
-            }
-            disconnect();
-          }}
-          className='cursor-pointer py-2'
-        >
+
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className='py-2 text-muted-foreground'>Funding</DropdownMenuLabel>
+          {canFundWithUsdc ? (
+            <DropdownMenuItem onClick={openUsdcFunding} className='cursor-pointer py-2'>
+              <Coins />
+              <span className='text-base'>Add funds</span>
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem onClick={() => void card.buyWithCard()} className='cursor-pointer py-2'>
+            <CreditCard />
+            <span className='text-base'>{card.label}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => connectWallet()} className='cursor-pointer py-2'>
+            <PlugZap />
+            <span className='text-base'>Connect another wallet</span>
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className='py-2 text-muted-foreground'>Settings</DropdownMenuLabel>
+          {isEmbeddedSigner ? (
+            <DropdownMenuItem
+              onSelect={(e) => e.preventDefault()}
+              onClick={() => {
+                const next = !reviewOn;
+                setReviewEnabled(next);
+                setReviewOn(next);
+              }}
+              className='cursor-pointer py-2'
+            >
+              <ShieldCheck className={reviewOn ? "text-green-600" : "text-muted-foreground"} />
+              <span className='text-base'>Review before signing: {reviewOn ? "On" : "Off"}</span>
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem onClick={addUsdfcToken} className='cursor-pointer py-2'>
+            <Wallet />
+            <span className='text-base'>Add USDFC to wallet</span>
+          </DropdownMenuItem>
+          {isEmbeddedSigner ? (
+            <DropdownMenuItem onClick={() => void exportWallet()} className='cursor-pointer py-2'>
+              <KeyRound />
+              <span className='text-base'>Export wallet key</span>
+            </DropdownMenuItem>
+          ) : null}
+          {constants.faucets?.map((faucet) => (
+            <DropdownMenuItem asChild key={faucet.name} className='py-2'>
+              <a href={faucet.url} target='_blank' rel='noopener noreferrer' className='w-full cursor-pointer'>
+                <span className='text-base'>{faucet.name}</span>
+                <ArrowUpRightIcon className='text-muted-foreground' size={16} />
+              </a>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
+
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={signOut} className='cursor-pointer py-2'>
           <LogOut />
-          <span className='text-base text-zinc-950'>{authenticated ? "Log out" : "Disconnect"}</span>
+          <span className='text-base'>{authenticated ? "Log out" : "Disconnect"}</span>
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className='text-zinc-600 py-2'>Funding</DropdownMenuLabel>
-        {canFundWithUsdc ? (
-          <DropdownMenuItem onClick={openUsdcFunding} className='cursor-pointer py-2'>
-            <Coins />
-            <span className='text-base text-zinc-950'>Add funds</span>
-          </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuItem onClick={() => void card.buyWithCard()} className='cursor-pointer py-2'>
-          <CreditCard />
-          <span className='text-base text-zinc-950'>{card.label}</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => connectWallet()} className='cursor-pointer py-2'>
-          <PlugZap />
-          <span className='text-base text-zinc-950'>Connect another wallet</span>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className='text-zinc-600 py-2'>Tools</DropdownMenuLabel>
-        {isEmbeddedSigner ? (
-          <DropdownMenuItem onClick={() => void exportWallet()} className='cursor-pointer py-2'>
-            <KeyRound />
-            <span className='text-base text-zinc-950'>Export wallet key</span>
-          </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuItem onClick={addUsdfcToken} className='cursor-pointer'>
-          <span className='text-base text-zinc-950'>Add USDFC Token</span>
-        </DropdownMenuItem>
-        {isEmbeddedSigner ? (
-          <DropdownMenuItem
-            onSelect={(e) => e.preventDefault()}
-            onClick={() => {
-              const next = !reviewOn;
-              setReviewEnabled(next);
-              setReviewOn(next);
-            }}
-            className='cursor-pointer py-2'
-          >
-            <ShieldCheck className={reviewOn ? "text-green-600" : "text-zinc-400"} />
-            <span className='text-base text-zinc-950'>Review before signing: {reviewOn ? "On" : "Off"}</span>
-          </DropdownMenuItem>
-        ) : null}
-        {constants.faucets?.map((faucet) => (
-          <DropdownMenuItem asChild key={faucet.name} className='py-2'>
-            <a href={faucet.url} target='_blank' rel='noopener noreferrer' className='w-full cursor-pointer'>
-              <span className='text-base text-zinc-950'>{faucet.name}</span>
-              <ArrowUpRightIcon color='var(--color-zinc-400)' size={16} />
-            </a>
-          </DropdownMenuItem>
-        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
