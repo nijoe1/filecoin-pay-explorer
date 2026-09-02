@@ -421,8 +421,11 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                     </Button>
                   )}
                 </div>
+                {/* The amount is what the user came to type, so it takes focus on open and stays
+                    enabled while the token list loads; a disabled field could not be focused. */}
                 <Input
-                  disabled={isBusy || !sourceToken}
+                  autoFocus
+                  disabled={isBusy}
                   id={amountInputId}
                   inputMode='decimal'
                   onChange={setAmount}
