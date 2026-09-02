@@ -16,8 +16,9 @@ const TOKEN_PAGE_SIZE = 100;
 /**
  * The single place the console-wide funding dialogs are rendered: the
  * add-funds picker the wallet menu opens from any console page, the plain
- * deposit it can lead to, and the "Pay with USDC" dialog. It lives in the
- * console layout and keys on the address so a change of identity starts fresh.
+ * deposit it can lead to (or stands in for where USDC funding is unavailable),
+ * and the "Pay with USDC" dialog. It lives in the console layout and keys on
+ * the address so a change of identity starts fresh.
  */
 export function FundingHost() {
   const { address, chainId } = useConnection();
@@ -35,6 +36,11 @@ function FundingDialogs({ address, chainId }: { address: string; chainId: number
   const accountId = address.toLowerCase();
   const { data: tokens } = useAccountTokens(accountId, 1, { networkOverride: network, pageSize: TOKEN_PAGE_SIZE });
 
+  // Without USDC funding the picker would offer a single method, so Add funds
+  // is the deposit itself there.
+  const isPickerOpen = canFundWithUsdc && launch.isAddFundsOpen;
+  const showDeposit = isDepositOpen || (!canFundWithUsdc && launch.isAddFundsOpen);
+
   const chooseMethod = (method: AddFundsMethod) => {
     launch.closeAddFunds();
     if (method === "usdc") launch.openUsdcFunding();
@@ -42,20 +48,26 @@ function FundingDialogs({ address, chainId }: { address: string; chainId: number
     else if (method === "squid") launch.guidedTopUp?.();
     else setDepositOpen(true);
   };
+  const handleDepositOpenChange = (open: boolean) => {
+    setDepositOpen(open);
+    if (!open) launch.closeAddFunds();
+  };
 
   return (
     <>
-      <AddFundsDialog
-        cardLabel={card.label}
-        onOpenChange={(open) => (open ? launch.openAddFunds() : launch.closeAddFunds())}
-        onSelect={chooseMethod}
-        open={launch.isAddFundsOpen}
-        squidAvailable={canFundWithUsdc}
-        squidDisabledReason={canFundWithUsdc ? "Open the dashboard to swap another token." : undefined}
-        swapAvailable={canFundWithUsdc && launch.guidedTopUp !== null}
-      />
+      {canFundWithUsdc ? (
+        <AddFundsDialog
+          cardLabel={card.label}
+          onOpenChange={(open) => (open ? launch.openAddFunds() : launch.closeAddFunds())}
+          onSelect={chooseMethod}
+          open={isPickerOpen}
+          squidAvailable
+          squidDisabledReason='Open the dashboard to swap another token.'
+          swapAvailable={launch.guidedTopUp !== null}
+        />
+      ) : null}
       {/* No seeded token, so the deposit opens on its picker. */}
-      <DepositDialog onOpenChange={setDepositOpen} open={isDepositOpen} tokens={tokens?.userTokens ?? []} />
+      <DepositDialog onOpenChange={handleDepositOpenChange} open={showDeposit} tokens={tokens?.userTokens ?? []} />
       {canFundWithUsdc ? (
         <FundWithUsdcDialog
           accountId={accountId}

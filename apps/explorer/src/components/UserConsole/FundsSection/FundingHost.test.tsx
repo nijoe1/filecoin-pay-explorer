@@ -130,11 +130,19 @@ describe("FundingHost", () => {
     expect(openSwap).toHaveBeenCalledOnce();
   });
 
-  it("offers only the plain deposit on calibration and nothing without an address", () => {
+  it("opens the plain deposit itself on calibration, with no picker or USDC dialog, and nothing without an address", () => {
     wallet.chainId = 314159;
     const renderer = renderHost();
-    expect(find(renderer, "data-picker-open").props["data-squid"]).toBe(false);
+    expect(renderer.root.findAllByProps({ "data-picker-open": false }, { deep: false })).toHaveLength(0);
     expect(renderer.root.findAllByProps({ "data-usdc-dialog-open": false }, { deep: false })).toHaveLength(0);
+
+    press(renderer, "data-open-picker");
+    expect(find(renderer, "data-deposit-open").props["data-deposit-open"]).toBe(true);
+    act(() => find(renderer, "data-deposit-open").parent?.props.onOpenChange(false));
+    expect(find(renderer, "data-deposit-open").props["data-deposit-open"]).toBe(false);
+    // The request was consumed, so the next one opens the deposit again.
+    press(renderer, "data-open-picker");
+    expect(find(renderer, "data-deposit-open").props["data-deposit-open"]).toBe(true);
 
     wallet.address = undefined;
     expect(renderHost().root.findAllByType("div")).toHaveLength(0);
