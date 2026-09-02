@@ -1,4 +1,5 @@
 import { type Address, type Hash, isAddress, isHash } from "viem";
+import type { SquidDepositRef } from "./squid-deposit-route";
 import type { StorageLike } from "./storage";
 
 const STORAGE_PREFIX = "filecoin-pay:squid-deposit:v1";
@@ -6,12 +7,9 @@ const STORAGE_PREFIX = "filecoin-pay:squid-deposit:v1";
 export const PENDING_SQUID_DEPOSIT_EVENT = "filecoin-pay:squid-deposit-changed";
 
 /** A broadcast Squid deposit route whose Filecoin Pay credit is still pending. */
-export interface PendingSquidDeposit {
+export interface PendingSquidDeposit extends SquidDepositRef {
   recipient: Address;
   owner: Address;
-  sourceChainId: number;
-  quoteId: string;
-  transactionHash: Hash;
   sourceAmount: bigint;
   minimumDestinationAmount: bigint;
   fundsBefore: bigint;

@@ -5,6 +5,7 @@ import {
   FILECOIN_CHAIN_ID,
   SQUID_API_BASE_URL,
   type SquidClient,
+  type SquidDepositRef,
   type SquidDepositRouteRequest,
   type SquidDepositTarget,
   squidDepositAbi,
@@ -65,10 +66,7 @@ export interface ExecuteSquidDepositInput extends PollingOptions {
   onBroadcast?: (broadcast: { transactionHash: Hash; fundsBefore: bigint }) => void;
 }
 
-export interface AwaitSquidDepositInput extends PollingOptions {
-  transactionHash: Hash;
-  quoteId: string;
-  sourceChainId: number;
+export interface AwaitSquidDepositInput extends PollingOptions, SquidDepositRef {
   target: SquidDepositTarget;
   fundsBefore: bigint;
   destinationClient: SquidDepositDestinationClient;
@@ -88,7 +86,7 @@ export function readFilecoinPayFunds(
 }
 
 export async function fetchSquidDepositStatus(
-  input: { transactionHash: Hash; sourceChainId: number; quoteId: string },
+  input: SquidDepositRef,
   client: SquidClient,
 ): Promise<SquidDepositStatus> {
   const fetcher = client.fetch ?? globalThis.fetch.bind(globalThis);

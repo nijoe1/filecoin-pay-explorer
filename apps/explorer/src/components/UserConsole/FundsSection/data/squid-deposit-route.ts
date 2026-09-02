@@ -1,5 +1,5 @@
 import { type SourceToken, SQUID_ROUTER_ADDRESS, type SquidClientOptions } from "@filecoin-project/squid-evm-funding";
-import { type Address, encodeFunctionData, type Hex, parseAbi } from "viem";
+import { type Address, encodeFunctionData, type Hash, type Hex, parseAbi } from "viem";
 import { isNativeToken } from "./guided-top-up";
 
 export const FILECOIN_CHAIN_ID = 314;
@@ -74,6 +74,13 @@ export type ExecutableSquidDepositQuote = SquidDepositQuote & { transaction: Squ
 
 export type SquidClient = SquidClientOptions;
 
+/** What identifies a broadcast route to Squid's status API and to a later resume. */
+export interface SquidDepositRef {
+  transactionHash: Hash;
+  sourceChainId: number;
+  quoteId: string;
+}
+
 export function buildDepositPostHook({ payments, usdfc, recipient }: SquidDepositTarget) {
   return {
     chainType: "evm",
@@ -146,7 +153,7 @@ export function getSourceNativeCosts(
  * approval and the swap with 50% headroom, matching the funding package's
  * measured fee drift between quote and execution.
  */
-export function getRequiredNativeBalance(
+export function getDepositRequiredNativeBalance(
   quote: Pick<SquidDepositQuote, "fees" | "gasCosts">,
   sourceChainId: number,
   approvalGasFee: bigint,

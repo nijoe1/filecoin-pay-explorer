@@ -19,6 +19,7 @@ import type { Address } from "viem";
 import { useConnection, usePublicClient, useSwitchChain } from "wagmi";
 import { mainnet, SQUID_SOURCE_CHAINS } from "@/constants/chains";
 import useSynapse from "@/hooks/useSynapse";
+import { createDialogCloseGuard } from "../data/dialog-close-guard";
 import {
   calculateFundingRunway,
   calculateProjectedFundingRunway,
@@ -512,18 +513,16 @@ export function GuidedTopUpDialog({
     });
   };
 
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen && acquisitionState === "processing") {
-      toast.info("Wait for the acquisition request to finish before closing this dialog.");
-      return;
-    }
-    if (!nextOpen && isSwitchingNetwork) {
-      toast.info("Wait for the wallet network switch to finish before closing this dialog.");
-      return;
-    }
-    if (nextOpen) onOpenChange(true);
-    else closeDialog();
-  };
+  const handleOpenChange = createDialogCloseGuard({
+    blockReason: () => {
+      if (acquisitionState === "processing")
+        return "Wait for the acquisition request to finish before closing this dialog.";
+      if (isSwitchingNetwork) return "Wait for the wallet network switch to finish before closing this dialog.";
+      return null;
+    },
+    onClose: closeDialog,
+    onOpen: () => onOpenChange(true),
+  });
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>

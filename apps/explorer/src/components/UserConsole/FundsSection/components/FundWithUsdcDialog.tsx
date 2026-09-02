@@ -27,10 +27,11 @@ import { AlertCircle, Loader2 } from "lucide-react";
 import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useDebounce } from "use-debounce";
-import { type Address, createWalletClient, custom, erc20Abi, formatUnits, type Hash } from "viem";
+import { type Address, createWalletClient, custom, erc20Abi, formatUnits, getAddress, type Hash } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 import { isPrivyEmbeddedWallet } from "@/components/UserConsole/console-wallet";
 import {
+  BASE_CHAIN_ID,
   buildCardOnrampOptions,
   readOnrampEnvironment,
   runPrivyFunding,
@@ -40,6 +41,7 @@ import { useTopUpActivity } from "@/components/UserConsole/TopUpActivityContext"
 import { useTransactionReview } from "@/components/UserConsole/TransactionReview";
 import { mainnet, SQUID_SOURCE_CHAINS } from "@/constants/chains";
 import { formatAddress } from "@/utils/formatter";
+import { createDialogCloseGuard } from "../data/dialog-close-guard";
 import { formatUsdfcAmount, parseFundingAmount } from "../data/funding-runway";
 import { invalidateTopUpQueries } from "../data/guided-top-up";
 import {
@@ -50,7 +52,7 @@ import {
   type SquidDepositStage,
 } from "../data/squid-deposit-execution";
 import {
-  getRequiredNativeBalance,
+  getDepositRequiredNativeBalance,
   getUsdfcPerUsdc,
   isExecutableQuote,
   isUnfavorableRate,
@@ -71,9 +73,9 @@ import { squidFetch } from "../data/squid-quote";
 const QUOTE_DEBOUNCE_MS = 500;
 // Base has the cheapest gas among the Squid source networks and is where
 // Privy's funding flows deliver USDC.
-const DEFAULT_SOURCE_CHAIN_ID = 8453;
+const DEFAULT_SOURCE_CHAIN_ID = BASE_CHAIN_ID;
 const APPROVAL_GAS_UNITS = 60_000n;
-const MINIMUM_GAS_TOP_UP = "0.002";
+const MINIMUM_GAS_TOP_UP = 0.002;
 
 type UiStage = SquidDepositStage | "preparing";
 
@@ -134,7 +136,7 @@ type FundWithUsdcDialogProps = {
 
 export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUsdcDialogProps) {
   const { address: recipient } = useAccount();
-  const { ready: walletsReady, wallets } = useWallets();
+  const { ready: areWalletsReady, wallets } = useWallets();
   const { connectWallet } = useConnectWallet();
   const { addFunds } = useAddFunds();
   const { fund: fundWithCard } = useFiatOnramp();
@@ -157,7 +159,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   const [hasApproved, setHasApproved] = useState(false);
   const [transactionHash, setTransactionHash] = useState<Hash | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState<PendingSquidDeposit | null>(null);
+  const [pendingDeposit, setPendingDeposit] = useState<PendingSquidDeposit | null>(null);
   const [isFunding, setIsFunding] = useState(false);
   const switchedEmbeddedWallet = useRef<ConnectedWallet | null>(null);
   const resumedHash = useRef<Hash | null>(null);
@@ -190,7 +192,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     enabled: open && !!sourceClient && !!payingWallet && !!sourceToken,
     queryFn: async () => {
       if (!sourceClient || !payingWallet || !sourceToken) throw new Error("Balances are unavailable");
-      const owner = payingWallet.address as Address;
+      const owner = getAddress(payingWallet.address);
       const [token, native, gasPrice] = await Promise.all([
         sourceClient.readContract({
           abi: erc20Abi,
@@ -205,6 +207,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     },
     queryKey: ["squid-deposit-balances", sourceChainId, sourceToken?.token, payingWallet?.address],
     refetchInterval: 15_000,
+    staleTime: 10_000,
   });
   const balances = balancesQuery.data;
 
@@ -216,7 +219,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
       return requestSquidDepositRoute(
         {
           ...depositTarget,
-          owner: payingWallet.address as Address,
+          owner: getAddress(payingWallet.address),
           recipient,
           sourceChainId,
           sourceToken: sourceToken.token,
@@ -240,13 +243,15 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   const quote = quoteQuery.data;
   const rate = quote && sourceToken ? getUsdfcPerUsdc(quote, sourceToken.decimals) : null;
   const requiredNative =
-    quote && balances ? getRequiredNativeBalance(quote, sourceChainId, APPROVAL_GAS_UNITS * balances.gasPrice) : null;
+    quote && balances
+      ? getDepositRequiredNativeBalance(quote, sourceChainId, APPROVAL_GAS_UNITS * balances.gasPrice)
+      : null;
   const hasInsufficientUsdc = balances !== undefined && parsedAmount !== null && balances.token < parsedAmount;
   const hasInsufficientGas = balances !== undefined && requiredNative !== null && balances.native < requiredNative;
   const isBusy = stage !== null || isFunding;
   const canConfirm =
     !isBusy &&
-    pending === null &&
+    pendingDeposit === null &&
     !!quote &&
     !!payingWallet &&
     !!sourceToken &&
@@ -268,10 +273,10 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     setTransactionHash(null);
     resumedHash.current = null;
     try {
-      setPending(recipient ? loadPendingSquidDeposit(window.localStorage, recipient) : null);
+      setPendingDeposit(recipient ? loadPendingSquidDeposit(window.localStorage, recipient) : null);
     } catch {
       // Storage can be unavailable (private mode, blocked site data); then there is nothing to resume.
-      setPending(null);
+      setPendingDeposit(null);
     }
   }, [open, recipient, setTopUpActive]);
 
@@ -304,14 +309,11 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     onOpenChange(false);
   };
 
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen && isBusy) {
-      toast.info("Wait for the current step to finish before closing this dialog.");
-      return;
-    }
-    if (nextOpen) onOpenChange(true);
-    else closeDialog();
-  };
+  const handleOpenChange = createDialogCloseGuard({
+    blockReason: () => (isBusy ? "Wait for the current step to finish before closing this dialog." : null),
+    onClose: closeDialog,
+    onOpen: () => onOpenChange(true),
+  });
 
   const finishDeposit = async (result: SquidDepositResult, depositRecipient: Address) => {
     try {
@@ -319,7 +321,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     } catch {
       // Storage is best effort; the deposit itself is confirmed on-chain.
     }
-    setPending(null);
+    setPendingDeposit(null);
     setStage(null);
     toast.success(`Deposited ${formatUsdfcAmount(result.depositedAmount)} USDFC into Filecoin Pay`);
     await invalidateTopUpQueries(queryClient, accountId, depositRecipient);
@@ -337,54 +339,54 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
         } catch {
           // Storage is best effort.
         }
-        setPending(null);
+        setPendingDeposit(null);
       }
       return;
     }
     setError(walletErrorMessage(failure, "The USDC funding could not be completed."));
   };
 
-  const resumePendingDeposit = async (pendingDeposit: PendingSquidDeposit) => {
+  const resumePendingDeposit = async (deposit: PendingSquidDeposit) => {
     if (!destinationClient) return;
     setError(null);
-    setTransactionHash(pendingDeposit.transactionHash);
+    setTransactionHash(deposit.transactionHash);
     try {
       const result = await awaitSquidDepositSettlement({
         destinationClient,
-        fundsBefore: pendingDeposit.fundsBefore,
+        fundsBefore: deposit.fundsBefore,
         onStage: setStageWithHash,
-        quoteId: pendingDeposit.quoteId,
-        sourceChainId: pendingDeposit.sourceChainId,
+        quoteId: deposit.quoteId,
+        sourceChainId: deposit.sourceChainId,
         squid,
-        target: { ...depositTarget, recipient: pendingDeposit.recipient },
-        transactionHash: pendingDeposit.transactionHash,
+        target: { ...depositTarget, recipient: deposit.recipient },
+        transactionHash: deposit.transactionHash,
       });
-      await finishDeposit(result, pendingDeposit.recipient);
+      await finishDeposit(result, deposit.recipient);
     } catch (failure) {
-      handleFailure(failure, pendingDeposit.recipient);
+      handleFailure(failure, deposit.recipient);
     }
   };
 
   // Reads the latest handlers without making the effect below depend on them.
-  const resumeOnOpen = useEffectEvent((pendingDeposit: PendingSquidDeposit) => {
-    if (isBusy || resumedHash.current === pendingDeposit.transactionHash) return;
-    resumedHash.current = pendingDeposit.transactionHash;
-    void resumePendingDeposit(pendingDeposit);
+  const resumeOnOpen = useEffectEvent((deposit: PendingSquidDeposit) => {
+    if (isBusy || resumedHash.current === deposit.transactionHash) return;
+    resumedHash.current = deposit.transactionHash;
+    void resumePendingDeposit(deposit);
   });
 
   useEffect(() => {
-    if (open && pending) resumeOnOpen(pending);
-  }, [open, pending]);
+    if (open && pendingDeposit) resumeOnOpen(pendingDeposit);
+  }, [open, pendingDeposit]);
 
   const dismissPendingDeposit = () => {
-    if (!pending) return;
+    if (!pendingDeposit) return;
     if (!window.confirm("Only dismiss this after checking the transaction on the source network explorer.")) return;
     try {
-      clearPendingSquidDeposit(window.localStorage, pending.recipient);
+      clearPendingSquidDeposit(window.localStorage, pendingDeposit.recipient);
     } catch {
       // Storage is best effort.
     }
-    setPending(null);
+    setPendingDeposit(null);
     setError(null);
     setTransactionHash(null);
   };
@@ -395,7 +397,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     }
     if (!sourceClient || !destinationClient) return;
     setError(null);
-    const owner = payingWallet.address as Address;
+    const owner = getAddress(payingWallet.address);
     const request: SquidDepositRouteRequest = {
       ...depositTarget,
       owner,
@@ -437,7 +439,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
       const result = await executeSquidDeposit({
         destinationClient,
         onBroadcast: ({ transactionHash: hash, fundsBefore }) => {
-          const pendingDeposit: PendingSquidDeposit = {
+          const broadcastDeposit: PendingSquidDeposit = {
             recipient,
             owner,
             sourceChainId,
@@ -452,10 +454,10 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
           };
           resumedHash.current = hash;
           try {
-            setPending(savePendingSquidDeposit(window.localStorage, pendingDeposit));
+            setPendingDeposit(savePendingSquidDeposit(window.localStorage, broadcastDeposit));
           } catch {
             // Storage is best effort; the deposit is still tracked in memory for this session.
-            setPending(pendingDeposit);
+            setPendingDeposit(broadcastDeposit);
           }
         },
         onStage: setStageWithHash,
@@ -531,9 +533,9 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     balances !== undefined && requiredNative !== null && requiredNative > balances.native
       ? requiredNative - balances.native
       : 0n;
-  const gasTopUpAmount = Math.max(Number(formatUnits(gasShortfall, 18)) * 2, Number(MINIMUM_GAS_TOP_UP)).toFixed(4);
+  const gasTopUpAmount = Math.max(Number(formatUnits(gasShortfall, 18)) * 2, MINIMUM_GAS_TOP_UP).toFixed(4);
   const explorerUrl = sourceChain?.blockExplorers?.default.url;
-  const activeStage = stage ?? (pending ? "bridging" : null);
+  const activeStage = stage ?? (pendingDeposit ? "bridging" : null);
   const showEmptyWalletHint = balances !== undefined && balances.token === 0n && parsedAmount === null && !isBusy;
   const payerLabel = isEmbedded ? "your Privy wallet" : "this wallet";
 
@@ -560,7 +562,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
         </DialogHeader>
 
         <div className='grid gap-4 text-sm'>
-          {pending ? (
+          {pendingDeposit ? (
             <div className='grid gap-2 rounded-md border p-3' role='status'>
               <p className='inline-flex items-center gap-2 font-medium'>
                 {isBusy ? <Loader2 className='h-4 w-4 animate-spin' /> : null}
@@ -571,7 +573,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                   ? describeStage(activeStage, { hasApproved, isEmbedded })
                   : "Waiting for the route to settle…"}
               </p>
-              <TransactionLink explorerUrl={explorerUrl} hash={pending.transactionHash} />
+              <TransactionLink explorerUrl={explorerUrl} hash={pendingDeposit.transactionHash} />
               {error && (
                 <p className='text-destructive' role='alert'>
                   {error}
@@ -581,7 +583,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                 <Button
                   aria-label='Check deposit again'
                   disabled={isBusy}
-                  onClick={() => void resumePendingDeposit(pending)}
+                  onClick={() => void resumePendingDeposit(pendingDeposit)}
                   size='compact'
                   type='button'
                   variant='tertiary'
@@ -589,7 +591,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                   Check again
                 </Button>
                 <Button
-                  aria-label='Dismiss pending deposit'
+                  aria-label='Dismiss pendingDeposit deposit'
                   disabled={isBusy}
                   onClick={dismissPendingDeposit}
                   size='compact'
@@ -617,12 +619,12 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                     </button>
                   </div>
                   <Select
-                    disabled={isBusy || !walletsReady || wallets.length === 0}
+                    disabled={isBusy || !areWalletsReady || wallets.length === 0}
                     onValueChange={setPayingAddress}
                     value={payingWallet?.address ?? ""}
                   >
                     <SelectTrigger aria-label='Paying wallet' className='w-full' id='fund-with-usdc-wallet'>
-                      <SelectValue placeholder={walletsReady ? "Choose a wallet" : "Loading wallets…"} />
+                      <SelectValue placeholder={areWalletsReady ? "Choose a wallet" : "Loading wallets…"} />
                     </SelectTrigger>
                     <SelectContent>
                       {wallets.map((wallet) => (
@@ -834,9 +836,9 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
 
         <DialogFooter>
           <Button disabled={isBusy} onClick={() => handleOpenChange(false)} type='button' variant='ghost'>
-            {pending ? "Close" : "Cancel"}
+            {pendingDeposit ? "Close" : "Cancel"}
           </Button>
-          {!pending && (
+          {!pendingDeposit && (
             <Button
               aria-label='Fund with USDC'
               disabled={!canConfirm}

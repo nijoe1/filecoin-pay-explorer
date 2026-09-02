@@ -3,7 +3,7 @@ import { decodeFunctionData } from "viem";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildDepositPostHook,
-  getRequiredNativeBalance,
+  getDepositRequiredNativeBalance,
   getSourceNativeCosts,
   getUsdfcPerUsdc,
   isExecutableQuote,
@@ -156,9 +156,9 @@ describe("rate helpers", () => {
     const quote = parseSquidDepositRoute(fakeRoute(), request, true, now);
     expect(getSourceNativeCosts(quote, 8453)).toEqual({ fees: 5_971_701_479_908n, gas: 3_596_394_000_000n });
     expect(getSourceNativeCosts(quote, 1)).toEqual({ fees: 0n, gas: 0n });
-    expect(getRequiredNativeBalance({ fees: quote.fees, gasCosts: quote.gasCosts }, 8453, 1_000_000_000_000n)).toBe(
-      5_971_701_479_908n + 4_596_394_000_000n + 2_298_197_000_000n,
-    );
+    expect(
+      getDepositRequiredNativeBalance({ fees: quote.fees, gasCosts: quote.gasCosts }, 8453, 1_000_000_000_000n),
+    ).toBe(5_971_701_479_908n + 4_596_394_000_000n + 2_298_197_000_000n);
   });
 });
 
