@@ -11,6 +11,7 @@ import type { Hex } from "viem";
 import CopyButton from "@/components/shared/CopyButton";
 import { type SessionKeyWithStatus, useSessionKeys } from "@/hooks/useSessionKeys";
 import type { Network } from "@/types";
+import type { AuthorizeParamError } from "@/utils/authorizeParam";
 import { formatAddress, formatDateTime } from "@/utils/formatter";
 import { hasUniformExpiry, SCOPE_BY_ID, type ScopeId } from "@/utils/sessionKeys";
 import { CreateKeyFlow } from "./CreateKeyFlow";
@@ -23,6 +24,8 @@ interface SessionKeysSectionProps {
   prefillAddress?: Hex | null;
   prefillScopes?: ScopeId[] | null;
   prefillNetwork?: Network | null;
+  /** Set when the link carried an `authorize` value that could not be used. */
+  prefillError?: AuthorizeParamError | null;
 }
 
 type ConnectedProps = SessionKeysSectionProps & { account: Hex };
@@ -67,7 +70,20 @@ const SessionKeysSection = ({ account, ...rest }: SessionKeysSectionProps) => {
   return <ConnectedSessionKeys account={account} {...rest} />;
 };
 
-const ConnectedSessionKeys = ({ network, account, prefillAddress, prefillScopes, prefillNetwork }: ConnectedProps) => {
+const PREFILL_ERROR_COPY: Record<AuthorizeParamError, string> = {
+  "bad-checksum":
+    "The address in this link is not spelled the way the checksum expects. Nothing was added. Ask for a new link, or use an all-lowercase address.",
+  "not-an-address": "This link does not contain a valid address, so nothing was added. Ask for a new link.",
+};
+
+const ConnectedSessionKeys = ({
+  network,
+  account,
+  prefillAddress,
+  prefillScopes,
+  prefillNetwork,
+  prefillError,
+}: ConnectedProps) => {
   const { keys, addKey, removeKey, syncFromChain, refetchStatuses, registry } = useSessionKeys(network, account);
   const [createOpen, setCreateOpen] = useState(false);
   // Only the banner's button carries the link's address and scopes into the
@@ -167,6 +183,12 @@ const ConnectedSessionKeys = ({ network, account, prefillAddress, prefillScopes,
           <Button variant='primary' size='compact' onClick={() => openCreate("link")}>
             Review &amp; authorize
           </Button>
+        </div>
+      )}
+      {prefillError && (
+        <div className='rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 p-4 text-sm text-amber-900 dark:text-amber-200'>
+          <p className='font-semibold'>Invalid address in link</p>
+          <p className='text-xs mt-1'>{PREFILL_ERROR_COPY[prefillError]}</p>
         </div>
       )}
       {isSelfAuthRequest && (
