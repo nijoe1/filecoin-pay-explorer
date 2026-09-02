@@ -83,9 +83,11 @@ export function isSameUsdcSource(source: UsdcSource, choice: UsdcSourceChoice | 
   );
 }
 
+/** At most two decimals; dust that would round to nothing reads as less than a cent. */
 export function formatUsdcBalance({ balance, token }: UsdcSource): string {
   const [whole, fraction = ""] = formatUnits(balance, token.decimals).split(".");
   const trimmed = fraction.replace(/0+$/, "").slice(0, 2);
+  if (whole === "0" && Number(trimmed || "0") === 0 && balance > 0n) return "<0.01";
   return trimmed ? `${whole}.${trimmed}` : whole;
 }
 

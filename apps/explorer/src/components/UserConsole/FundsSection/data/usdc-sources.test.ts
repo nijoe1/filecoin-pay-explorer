@@ -93,10 +93,13 @@ describe("ranking USDC sources", () => {
     expect(isSameUsdcSource(source(BASE_USDC, 1n), undefined)).toBe(false);
   });
 
-  it("formats balances with at most two decimals", () => {
+  it("formats balances with at most two decimals and names dust as less than a cent", () => {
     expect(formatUsdcBalance(source(ARBITRUM_USDC, 120_500_000n))).toBe("120.5");
     expect(formatUsdcBalance(source(BSC_USDC, 7n * 10n ** 18n))).toBe("7");
     expect(formatUsdcBalance(source(BASE_USDC, 1_234_567n))).toBe("1.23");
+    expect(formatUsdcBalance(source(BASE_USDC, 4_999n))).toBe("<0.01");
+    expect(formatUsdcBalance(source(BASE_USDC, 10_000n))).toBe("0.01");
+    expect(formatUsdcBalance(source(BASE_USDC, 0n))).toBe("0");
   });
 });
 
