@@ -1,4 +1,3 @@
-import { fetchSourceTokens } from "@filecoin-project/squid-evm-funding";
 import type { ConnectedWallet } from "@privy-io/react-auth";
 import { useQuery } from "@tanstack/react-query";
 import { type Address, erc20Abi, formatUnits, getAddress } from "viem";
@@ -10,8 +9,8 @@ import {
   requestSquidDepositRoute,
   type SquidClient,
   type SquidDepositTarget,
-  selectUsdcTokens,
 } from "../../data/squid-deposit-route";
+import { usdcTokensQueryOptions } from "../../data/squid-usdc-tokens";
 
 // Gas units for the USDC approval that precedes a first purchase, priced at the current gas price.
 const APPROVAL_GAS_UNITS = 60_000n;
@@ -49,12 +48,7 @@ export function useSquidDepositQuote({
   sourceTokenAddress: string;
   squid: SquidClient;
 }) {
-  const tokensQuery = useQuery({
-    enabled: open,
-    queryFn: async () => selectUsdcTokens(await fetchSourceTokens(sourceChainId, squid)),
-    queryKey: ["squid-usdc-tokens", sourceChainId, squid.integratorId],
-    staleTime: 5 * 60_000,
-  });
+  const tokensQuery = useQuery({ ...usdcTokensQueryOptions(sourceChainId, squid), enabled: open });
   const usdcTokens = tokensQuery.data ?? [];
   const sourceToken =
     usdcTokens.find((token) => token.token.toLowerCase() === sourceTokenAddress.toLowerCase()) ?? usdcTokens[0];

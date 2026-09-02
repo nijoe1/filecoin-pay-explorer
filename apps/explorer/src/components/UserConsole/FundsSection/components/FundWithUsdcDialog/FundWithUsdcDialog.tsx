@@ -42,6 +42,13 @@ import { createDialogCloseGuard } from "../../data/dialog-close-guard";
 import { formatUsdfcAmount } from "../../data/funding-runway";
 import { readSquidIntegratorId } from "../../data/squid-integrator";
 import { squidFetch } from "../../data/squid-quote";
+import {
+  findUsdcSourceCovering,
+  formatUsdcBalance,
+  isSameUsdcSource,
+  pickDefaultUsdcSource,
+  type UsdcSourceChoice,
+} from "../../data/usdc-sources";
 import { DepositProgress } from "./DepositProgress";
 import { PaymentSourceFields } from "./PaymentSourceFields";
 import { PendingDepositPanel } from "./PendingDepositPanel";
@@ -49,12 +56,13 @@ import { GasShortfallPanel, TopUpWalletPanel } from "./PrivyFundingPanels";
 import { QuoteSummary } from "./QuoteSummary";
 import { useSquidDepositExecution } from "./useSquidDepositExecution";
 import { useSquidDepositQuote } from "./useSquidDepositQuote";
+import { useUsdcBalancesAcrossChains } from "./useUsdcBalancesAcrossChains";
 import { describeWallet, formatTokenAmount, pickDefaultWallet } from "./wallets";
 
 const QUOTE_DEBOUNCE_MS = 500;
-// Base has the cheapest gas among the Squid source networks and is where
-// Privy's funding flows deliver USDC.
-const DEFAULT_SOURCE_CHAIN_ID = BASE_CHAIN_ID;
+// Until the scan finds USDC somewhere: Base has the cheapest gas among the
+// Squid source networks and is where Privy's funding flows deliver USDC.
+const FALLBACK_SOURCE: UsdcSourceChoice = { chainId: BASE_CHAIN_ID, token: "" };
 const DEPOSIT_CONTRACTS = { payments: mainnet.contracts.payments.address, usdfc: mainnet.contracts.usdfc.address };
 
 type FundWithUsdcDialogProps = {
@@ -65,9 +73,10 @@ type FundWithUsdcDialogProps = {
 
 /**
  * Pays USDC from any connected wallet and lands it as USDFC in the Filecoin
- * Pay account. This component owns what the user is choosing (wallet,
- * network, token, amount) and the Privy top-up flows; the quote hook owns what
- * that choice costs and the execution hook owns what happens after confirm.
+ * Pay account. This component owns what the user is choosing (wallet, USDC
+ * source, amount) and the Privy top-up flows; the scan hook owns where the
+ * wallet's USDC is, the quote hook what the choice costs, and the execution
+ * hook what happens after confirm.
  */
 export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUsdcDialogProps) {
   const { address: recipient } = useAccount();
@@ -84,8 +93,8 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   const amountInputId = useId();
 
   const [payingAddress, setPayingAddress] = useState("");
-  const [sourceChainId, setSourceChainId] = useState(DEFAULT_SOURCE_CHAIN_ID);
-  const [sourceTokenAddress, setSourceTokenAddress] = useState("");
+  // The user's own pick, if any; otherwise the source holding the most USDC.
+  const [chosenSource, setChosenSource] = useState<UsdcSourceChoice | null>(null);
   const [amount, setAmount] = useState("");
   const [debouncedAmount] = useDebounce(amount, QUOTE_DEBOUNCE_MS);
   const [isFunding, setIsFunding] = useState(false);
@@ -99,6 +108,12 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     wallets.find((wallet) => wallet.address.toLowerCase() === payingAddress.toLowerCase()) ??
     pickDefaultWallet(wallets);
   const isEmbedded = payingWallet ? isPrivyEmbeddedWallet(payingWallet) : false;
+  const scan = useUsdcBalancesAcrossChains({ enabled: open, owner: payingWallet?.address, squid });
+  const defaultSource = pickDefaultUsdcSource(scan.sources);
+  const sourceChoice: UsdcSourceChoice =
+    chosenSource ??
+    (defaultSource ? { chainId: defaultSource.chainId, token: defaultSource.token.token } : FALLBACK_SOURCE);
+  const sourceChainId = sourceChoice.chainId;
   const sourceChain = SQUID_SOURCE_CHAINS.find((chain) => chain.id === sourceChainId);
   const nativeSymbol = sourceChain?.nativeCurrency.symbol ?? "gas";
   const sourceClient = usePublicClient({ chainId: sourceChainId });
@@ -139,7 +154,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     recipient,
     sourceChainId,
     sourceClient,
-    sourceTokenAddress,
+    sourceTokenAddress: sourceChoice.token,
     squid,
   });
   const { pendingDeposit, stage } = execution;
@@ -166,6 +181,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     wasOpen.current = open;
     if (open) {
       setAmount("");
+      setChosenSource(null);
       setReviewing(false);
       setSourceExpanded(false);
     }
@@ -201,6 +217,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     } finally {
       setIsFunding(false);
       void balancesQuery.refetch();
+      void scan.refetch();
     }
   };
 
@@ -252,21 +269,32 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   const activeStage = stage ?? (pendingDeposit ? "bridging" : null);
   const payerLabel = isEmbedded ? "your Privy wallet" : "this wallet";
   const isSourceResolved = !!payingWallet && !!sourceToken;
-  // One helper at a time, in order of what blocks the payment.
+  const resolvedChoice = sourceToken ? { chainId: sourceChainId, token: sourceToken.token } : undefined;
+  // Another network that would do: the one covering the amount, or holding the most USDC before an amount is typed.
+  const betterSource = parsedAmount !== null ? findUsdcSourceCovering(scan.sources, debouncedAmount) : defaultSource;
+  const alternative = betterSource && !isSameUsdcSource(betterSource, resolvedChoice) ? betterSource : undefined;
+  const alternativeChain = alternative && SQUID_SOURCE_CHAINS.find((chain) => chain.id === alternative.chainId);
+  const holdsUsdcSomewhere = scan.sources.some((source) => source.balance > 0n);
+  // One helper at a time, in order of what blocks the payment. Buying or
+  // transferring USDC is only offered once no scanned network can pay.
   const helper =
     balances === undefined || !isSourceResolved
       ? null
-      : balances.token === 0n
-        ? "empty"
-        : hasInsufficientUsdc
-          ? "insufficient"
-          : hasInsufficientGas
-            ? "gas"
-            : null;
+      : balances.token === 0n || hasInsufficientUsdc
+        ? alternative
+          ? "elsewhere"
+          : scan.isPending
+            ? null
+            : holdsUsdcSomewhere
+              ? "insufficient"
+              : "empty"
+        : hasInsufficientGas
+          ? "gas"
+          : null;
   const topUpMessage =
     helper === "empty"
-      ? `${payerLabel[0].toUpperCase()}${payerLabel.slice(1)} holds no ${sourceToken?.symbol ?? "USDC"} on ${sourceChain?.name ?? "this network"} yet.`
-      : `Not enough ${sourceToken?.symbol ?? "USDC"} in ${payerLabel}.`;
+      ? `${payerLabel[0].toUpperCase()}${payerLabel.slice(1)} holds no USDC on any supported network yet.`
+      : `Not enough USDC in ${payerLabel} on any supported network.`;
   const view = stage ? "progress" : pendingDeposit ? "pending" : isReviewing ? "review" : "amount";
 
   return (
@@ -351,15 +379,16 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                 isCollapsed={!isSourceExpanded}
                 onConnectAnother={() => connectWallet()}
                 onExpand={() => setSourceExpanded(true)}
-                onPayingAddressChange={setPayingAddress}
-                onSourceChainChange={(chainId) => {
-                  setSourceChainId(chainId);
-                  setSourceTokenAddress("");
+                isScanning={scan.isPending}
+                onPayingAddressChange={(address) => {
+                  setPayingAddress(address);
+                  setChosenSource(null);
                 }}
-                onSourceTokenChange={setSourceTokenAddress}
+                onSourceChange={setChosenSource}
                 payingWallet={payingWallet}
                 sourceChain={sourceChain}
-                sourceChainId={sourceChainId}
+                sourceChoice={resolvedChoice ?? sourceChoice}
+                sources={scan.sources}
                 sourceToken={sourceToken}
                 tokensQuery={tokensQuery}
                 usdcTokens={usdcTokens}
@@ -395,6 +424,24 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                 )}
               </div>
 
+              {helper === "elsewhere" && alternative && alternativeChain && (
+                <div className='flex flex-wrap items-center justify-between gap-2 rounded-md border p-3'>
+                  <span className='text-muted-foreground'>
+                    {alternativeChain.name} holds {formatUsdcBalance(alternative)} {alternative.token.symbol}
+                    {parsedAmount !== null ? ", enough for this amount." : "."}
+                  </span>
+                  <Button
+                    aria-label={`Pay from ${alternativeChain.name}`}
+                    disabled={isBusy}
+                    onClick={() => setChosenSource({ chainId: alternative.chainId, token: alternative.token.token })}
+                    size='compact'
+                    type='button'
+                    variant='tertiary'
+                  >
+                    Use {alternativeChain.name}
+                  </Button>
+                </div>
+              )}
               {(helper === "empty" || helper === "insufficient") && (
                 <TopUpWalletPanel
                   hasPrivyLogin={hasPrivyLogin}

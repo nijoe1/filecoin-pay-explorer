@@ -1,26 +1,43 @@
 import { Button } from "@filecoin-foundation/ui-filecoin/Button";
 import { Label } from "@filecoin-pay/ui/components/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@filecoin-pay/ui/components/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@filecoin-pay/ui/components/select";
 import type { SourceToken } from "@filecoin-project/squid-evm-funding";
 import type { ConnectedWallet } from "@privy-io/react-auth";
 import { SQUID_SOURCE_CHAINS } from "@/constants/chains";
-import { formatAddress } from "@/utils/formatter";
+import {
+  buildUsdcSourceOptions,
+  formatUsdcBalance,
+  isSameUsdcSource,
+  parseUsdcSourceValue,
+  toSelectedUsdcSourceValue,
+  type UsdcSource,
+  type UsdcSourceChoice,
+} from "../../data/usdc-sources";
 import type { SourceChain } from "./useSquidDepositExecution";
 import { describeWallet } from "./wallets";
 
-/** Which wallet pays, on which network, with which USDC. */
+/** Which wallet pays, and with which USDC on which network. */
 export function PaymentSourceFields({
   areWalletsReady,
   isBusy,
   isCollapsed,
-  onExpand,
+  isScanning,
   onConnectAnother,
+  onExpand,
   onPayingAddressChange,
-  onSourceChainChange,
-  onSourceTokenChange,
+  onSourceChange,
   payingWallet,
   sourceChain,
-  sourceChainId,
+  sourceChoice,
+  sources,
   sourceToken,
   tokensQuery,
   usdcTokens,
@@ -30,19 +47,23 @@ export function PaymentSourceFields({
   isBusy: boolean;
   /** One summary line with a Change action, until the user wants to pick differently. */
   isCollapsed: boolean;
+  /** True while some network has not reported its balances yet. */
+  isScanning: boolean;
   onConnectAnother: () => void;
   onExpand: () => void;
   onPayingAddressChange: (address: string) => void;
-  onSourceChainChange: (chainId: number) => void;
-  onSourceTokenChange: (token: string) => void;
+  onSourceChange: (choice: UsdcSourceChoice) => void;
   payingWallet: ConnectedWallet | undefined;
   sourceChain: SourceChain | undefined;
-  sourceChainId: number;
+  sourceChoice: UsdcSourceChoice;
+  /** The paying wallet's USDC on every network, largest first. */
+  sources: readonly UsdcSource[];
   sourceToken: SourceToken | undefined;
   tokensQuery: { isError: boolean; isPending: boolean };
   usdcTokens: SourceToken[];
   wallets: ConnectedWallet[];
 }) {
+  const selectedSource = sources.find((source) => isSameUsdcSource(source, sourceChoice));
   if (isCollapsed && payingWallet && sourceToken) {
     return (
       <div className='flex flex-wrap items-center justify-between gap-2 rounded-md border p-3'>
@@ -51,7 +72,12 @@ export function PaymentSourceFields({
           {describeWallet(payingWallet)}
           <span className='text-muted-foreground'> on </span>
           {sourceChain?.name ?? "this network"}
-          {usdcTokens.length > 1 ? <span className='text-muted-foreground'> · {sourceToken.symbol}</span> : null}
+          {selectedSource ? (
+            <span className='text-muted-foreground'>
+              {" "}
+              · {formatUsdcBalance(selectedSource)} {sourceToken.symbol}
+            </span>
+          ) : null}
         </span>
         <Button
           aria-label='Change payment source'
@@ -66,8 +92,7 @@ export function PaymentSourceFields({
       </div>
     );
   }
-  // Only when two listed tokens share a symbol does the address tell them apart.
-  const showTokenAddresses = new Set(usdcTokens.map((token) => token.symbol)).size < usdcTokens.length;
+  const { funded, other } = buildUsdcSourceOptions({ chains: SQUID_SOURCE_CHAINS, sources });
   return (
     <>
       <div className='grid gap-4 sm:grid-cols-2'>
@@ -104,43 +129,43 @@ export function PaymentSourceFields({
         </div>
 
         <div className='grid gap-2'>
-          <Label htmlFor='fund-with-usdc-network'>Network</Label>
+          <div className='flex h-6 items-center justify-between gap-2'>
+            <Label htmlFor='fund-with-usdc-source'>Pay with</Label>
+            {isScanning ? <span className='text-xs text-muted-foreground'>Checking balances…</span> : null}
+          </div>
           <Select
             disabled={isBusy}
-            onValueChange={(value) => onSourceChainChange(Number(value))}
-            value={String(sourceChainId)}
+            onValueChange={(value) => onSourceChange(parseUsdcSourceValue(value))}
+            value={toSelectedUsdcSourceValue(sourceChoice, sources)}
           >
-            <SelectTrigger aria-label='Source network' className='w-full' id='fund-with-usdc-network'>
+            <SelectTrigger aria-label='Payment source' className='w-full' id='fund-with-usdc-source'>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {SQUID_SOURCE_CHAINS.map((chain) => (
-                <SelectItem key={chain.id} value={String(chain.id)}>
-                  {chain.name}
-                </SelectItem>
-              ))}
+              {funded.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel>Your USDC</SelectLabel>
+                  {funded.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
+              {other.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel>{funded.length > 0 ? "Other networks" : "Networks"}</SelectLabel>
+                  {other.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
             </SelectContent>
           </Select>
         </div>
       </div>
-
-      {usdcTokens.length > 1 && (
-        <div className='grid gap-2'>
-          <Label htmlFor='fund-with-usdc-token'>USDC token</Label>
-          <Select disabled={isBusy} onValueChange={onSourceTokenChange} value={sourceToken?.token ?? ""}>
-            <SelectTrigger aria-label='USDC token' className='w-full' id='fund-with-usdc-token'>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {usdcTokens.map((token) => (
-                <SelectItem key={token.token} value={token.token}>
-                  {showTokenAddresses ? `${token.symbol} (${formatAddress(token.token)})` : token.symbol}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
       {tokensQuery.isError && (
         <p className='text-destructive' role='alert'>
           Could not load Squid's token list. Try again shortly.
