@@ -27,20 +27,20 @@ import { AlertCircle, Loader2 } from "lucide-react";
 import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useDebounce } from "use-debounce";
-import { type Address, createWalletClient, custom, erc20Abi, formatUnits, type Hash, parseUnits } from "viem";
+import { type Address, createWalletClient, custom, erc20Abi, formatUnits, type Hash } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 import { isPrivyEmbeddedWallet } from "@/components/UserConsole/console-wallet";
 import {
   buildCardOnrampOptions,
-  isFundingExit,
   readOnrampEnvironment,
+  runPrivyFunding,
   toCaipChainId,
 } from "@/components/UserConsole/privy-funding";
 import { useTopUpActivity } from "@/components/UserConsole/TopUpActivityContext";
 import { useTransactionReview } from "@/components/UserConsole/TransactionReview";
 import { mainnet, SQUID_SOURCE_CHAINS } from "@/constants/chains";
 import { formatAddress } from "@/utils/formatter";
-import { formatUsdfcAmount } from "../data/funding-runway";
+import { formatUsdfcAmount, parseFundingAmount } from "../data/funding-runway";
 import { invalidateTopUpQueries } from "../data/guided-top-up";
 import {
   awaitSquidDepositSettlement,
@@ -65,6 +65,7 @@ import {
   savePendingSquidDeposit,
 } from "../data/squid-deposit-tracker";
 import { walletErrorMessage } from "../data/squid-execution";
+import { readSquidIntegratorId } from "../data/squid-integrator";
 import { squidFetch } from "../data/squid-quote";
 
 const QUOTE_DEBOUNCE_MS = 500;
@@ -73,8 +74,6 @@ const QUOTE_DEBOUNCE_MS = 500;
 const DEFAULT_SOURCE_CHAIN_ID = 8453;
 const APPROVAL_GAS_UNITS = 60_000n;
 const MINIMUM_GAS_TOP_UP = "0.002";
-// Same public integrator ID the guided top-up falls back to.
-const DEFAULT_INTEGRATOR_ID = "filecoin-testing-94a4a25a-d40b-41cb-b148-e96098862";
 
 type UiStage = SquidDepositStage | "preparing";
 
@@ -117,22 +116,6 @@ export function describeWallet(wallet: Pick<ConnectedWallet, "address" | "wallet
 }
 
 /** Privy reports wallet chains as CAIP-2 ids such as `eip155:8453`. */
-export function parseWalletChainId(chainId: string): number | undefined {
-  const parsed = Number(chainId.replace(/^eip155:/, ""));
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-export function parseUsdcAmount(amount: string, decimals: number): bigint | null {
-  const trimmed = amount.trim();
-  if (!/^\d*\.?\d*$/.test(trimmed) || trimmed === "" || trimmed === ".") return null;
-  try {
-    const parsed = parseUnits(trimmed, decimals);
-    return parsed > 0n ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 function pickDefaultWallet(wallets: readonly ConnectedWallet[]): ConnectedWallet | undefined {
   return wallets.find(isPrivyEmbeddedWallet) ?? wallets[0];
 }
@@ -180,7 +163,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   const resumedHash = useRef<Hash | null>(null);
   const wasOpen = useRef(false);
 
-  const integratorId = process.env.NEXT_PUBLIC_SQUID_INTEGRATOR_ID?.trim() || DEFAULT_INTEGRATOR_ID;
+  const integratorId = readSquidIntegratorId();
   const squid = { integratorId, fetch: squidFetch };
   const depositTarget = { payments: mainnet.contracts.payments.address, usdfc: mainnet.contracts.usdfc.address };
 
@@ -225,7 +208,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   });
   const balances = balancesQuery.data;
 
-  const parsedAmount = sourceToken ? parseUsdcAmount(debouncedAmount, sourceToken.decimals) : null;
+  const parsedAmount = sourceToken ? parseFundingAmount(debouncedAmount, sourceToken.decimals) : null;
   const quoteQuery = useQuery({
     enabled: open && stage === null && !!payingWallet && !!sourceToken && !!recipient && parsedAmount !== null,
     queryFn: () => {
@@ -488,17 +471,13 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
     }
   };
 
-  const runPrivyFunding = async (flow: () => Promise<unknown>, unavailableMessage: string) => {
+  const runFundingFlow = async (
+    flow: () => Promise<unknown>,
+    { successMessage, unavailableTitle }: { successMessage?: string; unavailableTitle: string },
+  ) => {
     setIsFunding(true);
     try {
-      await flow();
-      toast.success("USDC is on its way to your Privy wallet");
-    } catch (fundError) {
-      if (!isFundingExit(fundError)) {
-        toast.error(unavailableMessage, {
-          description: fundError instanceof Error ? fundError.message : "Enable funding in the Privy dashboard.",
-        });
-      }
+      if ((await runPrivyFunding(flow, { unavailableTitle })) && successMessage) toast.success(successMessage);
     } finally {
       setIsFunding(false);
       void balancesQuery.refetch();
@@ -508,7 +487,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
   /** Privy's card onramp (Stripe, MoonPay, or Meld by region) into the paying wallet. */
   const buyUsdcWithCard = () => {
     if (!payingWallet || !sourceToken) return;
-    return runPrivyFunding(
+    return runFundingFlow(
       () =>
         fundWithCard(
           buildCardOnrampOptions({
@@ -519,41 +498,33 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
             environment: readOnrampEnvironment(),
           }),
         ),
-      "Card purchases are unavailable",
+      { successMessage: "USDC is on its way to your Privy wallet", unavailableTitle: "Card purchases are unavailable" },
     );
   };
 
   /** Privy's unified funding modal: exchange or a transfer from another wallet. Needs a Privy login. */
   const transferUsdcToPrivyWallet = () => {
     if (!payingWallet || !sourceToken) return;
-    return runPrivyFunding(
+    return runFundingFlow(
       () =>
         addFunds({
           destination: { address: payingWallet.address, chain: toCaipChainId(sourceChainId), asset: sourceToken.token },
           crypto: {},
         }),
-      "Privy funding is unavailable",
+      { successMessage: "USDC is on its way to your Privy wallet", unavailableTitle: "Privy funding is unavailable" },
     );
   };
 
-  const addGasToPrivyWallet = async () => {
+  const addGasToPrivyWallet = () => {
     if (!payingWallet || !sourceChain) return;
-    setIsFunding(true);
-    try {
-      await fundWallet({
-        address: payingWallet.address,
-        options: { chain: sourceChain, asset: "native-currency", amount: gasTopUpAmount },
-      });
-    } catch (fundError) {
-      if (!isFundingExit(fundError)) {
-        toast.error("Privy funding is unavailable", {
-          description: fundError instanceof Error ? fundError.message : undefined,
-        });
-      }
-    } finally {
-      setIsFunding(false);
-      void balancesQuery.refetch();
-    }
+    return runFundingFlow(
+      () =>
+        fundWallet({
+          address: payingWallet.address,
+          options: { chain: sourceChain, asset: "native-currency", amount: gasTopUpAmount },
+        }),
+      { unavailableTitle: "Privy funding is unavailable" },
+    );
   };
 
   const gasShortfall =

@@ -22,7 +22,6 @@ import {
   Wallet,
 } from "lucide-react";
 import { useRef, useState } from "react";
-import { toast } from "sonner";
 import { type Address, erc20Abi, formatEther } from "viem";
 import { useAccount, useBalance, useDisconnect, useReadContract, useWalletClient } from "wagmi";
 import FilecoinLogo from "@/assests/FilecoinLogo";
@@ -33,8 +32,8 @@ import {
   BASE_CHAIN_ID,
   BASE_USDC,
   buildCardOnrampOptions,
-  isFundingExit,
   readOnrampEnvironment,
+  runPrivyFunding,
 } from "@/components/UserConsole/privy-funding";
 import { isReviewEnabled, setReviewEnabled, useIsEmbeddedSigner } from "@/components/UserConsole/TransactionReview";
 import useSynapse from "@/hooks/useSynapse";
@@ -82,23 +81,19 @@ const Balance = () => {
   /** Privy's card onramp into the console wallet on Base, then straight into USDC funding. */
   const buyUsdcWithCard = async () => {
     if (!address) return;
-    try {
-      await fundWithCard(
-        buildCardOnrampOptions({
-          address,
-          asset: BASE_USDC,
-          chainId: BASE_CHAIN_ID,
-          environment: readOnrampEnvironment(),
-        }),
-      );
-      openUsdcFunding();
-    } catch (error) {
-      if (!isFundingExit(error)) {
-        toast.error("Card purchases are unavailable", {
-          description: error instanceof Error ? error.message : "Enable funding in the Privy dashboard.",
-        });
-      }
-    }
+    const funded = await runPrivyFunding(
+      () =>
+        fundWithCard(
+          buildCardOnrampOptions({
+            address,
+            asset: BASE_USDC,
+            chainId: BASE_CHAIN_ID,
+            environment: readOnrampEnvironment(),
+          }),
+        ),
+      { unavailableTitle: "Card purchases are unavailable" },
+    );
+    if (funded) openUsdcFunding();
   };
 
   // Privy's onramp needs a Privy session, so a connect-only wallet logs in

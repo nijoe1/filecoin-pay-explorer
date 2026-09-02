@@ -1,13 +1,7 @@
 import type { ReactNode } from "react";
 import { act, create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  describeStage,
-  describeWallet,
-  FundWithUsdcDialog,
-  parseUsdcAmount,
-  parseWalletChainId,
-} from "./FundWithUsdcDialog";
+import { describeStage, describeWallet, FundWithUsdcDialog } from "./FundWithUsdcDialog";
 
 const RECIPIENT = "0x2222222222222222222222222222222222222222";
 const EMBEDDED = "0x1111111111111111111111111111111111111111";
@@ -116,15 +110,6 @@ describe("wallet helpers", () => {
     expect(describeWallet({ address: EXTERNAL, walletClientType: "coinbase_wallet" })).toBe(
       "Coinbase Wallet (0x3333...3333)",
     );
-  });
-
-  it("parses CAIP-2 chain ids and USDC amounts", () => {
-    expect(parseWalletChainId("eip155:8453")).toBe(8453);
-    expect(parseWalletChainId("eip155:nope")).toBeUndefined();
-    expect(parseUsdcAmount("12.5", 6)).toBe(12_500_000n);
-    expect(parseUsdcAmount("0", 6)).toBeNull();
-    expect(parseUsdcAmount("abc", 6)).toBeNull();
-    expect(parseUsdcAmount("", 6)).toBeNull();
   });
 
   it("describes every deposit stage and numbers the approval and swap signatures", () => {

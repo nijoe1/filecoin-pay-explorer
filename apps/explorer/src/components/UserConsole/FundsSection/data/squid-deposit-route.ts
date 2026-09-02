@@ -1,5 +1,6 @@
-import { NATIVE_TOKEN_ADDRESS, type SourceToken, SQUID_ROUTER_ADDRESS } from "@filecoin-project/squid-evm-funding";
+import { type SourceToken, SQUID_ROUTER_ADDRESS, type SquidClientOptions } from "@filecoin-project/squid-evm-funding";
 import { type Address, encodeFunctionData, type Hex, parseAbi } from "viem";
+import { isNativeToken } from "./guided-top-up";
 
 export const FILECOIN_CHAIN_ID = 314;
 export const SQUID_API_BASE_URL = "https://v2.api.squidrouter.com/v2";
@@ -71,12 +72,7 @@ export interface SquidDepositQuote {
 
 export type ExecutableSquidDepositQuote = SquidDepositQuote & { transaction: SquidDepositTransaction };
 
-export interface SquidClient {
-  integratorId: string;
-  fetch?: typeof globalThis.fetch;
-  baseUrl?: string;
-  now?: () => number;
-}
+export type SquidClient = SquidClientOptions;
 
 export function buildDepositPostHook({ payments, usdfc, recipient }: SquidDepositTarget) {
   return {
@@ -116,10 +112,6 @@ export function selectUsdcTokens(tokens: readonly SourceToken[]): SourceToken[] 
   return tokens
     .filter((token) => isUsdcLikeSymbol(token.symbol) && !isNativeToken(token.token))
     .sort((a, b) => Number(b.symbol.toUpperCase() === "USDC") - Number(a.symbol.toUpperCase() === "USDC"));
-}
-
-export function isNativeToken(address: string): boolean {
-  return address.toLowerCase() === NATIVE_TOKEN_ADDRESS.toLowerCase();
 }
 
 export function getUsdfcPerUsdc(

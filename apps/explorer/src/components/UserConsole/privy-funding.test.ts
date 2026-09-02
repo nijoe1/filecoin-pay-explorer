@@ -5,8 +5,12 @@ import {
   isFundingExit,
   isSandboxFlag,
   readOnrampEnvironment,
+  runPrivyFunding,
   toCaipChainId,
 } from "./privy-funding";
+
+const toast = vi.hoisted(() => ({ error: vi.fn() }));
+vi.mock("sonner", () => ({ toast }));
 
 describe("privy funding helpers", () => {
   it("builds card onramp options with a CAIP-2 chain and optional amount", () => {
@@ -47,6 +51,33 @@ describe("privy funding helpers", () => {
     );
     expect(isFundingExit(undefined)).toBe(true);
     expect(isFundingExit(Object.assign(new Error("Something else"), { code: 4001 }))).toBe(true);
+  });
+
+  it("reports a completed flow, stays quiet when the user leaves, and toasts real failures", async () => {
+    await expect(
+      runPrivyFunding(async () => undefined, { unavailableTitle: "Card purchases are unavailable" }),
+    ).resolves.toBe(true);
+    await expect(
+      runPrivyFunding(
+        async () => {
+          throw new Error("User exited flow");
+        },
+        { unavailableTitle: "Card purchases are unavailable" },
+      ),
+    ).resolves.toBe(false);
+    expect(toast.error).not.toHaveBeenCalled();
+
+    await expect(
+      runPrivyFunding(
+        async () => {
+          throw new Error("Funding is not enabled for this app");
+        },
+        { unavailableTitle: "Card purchases are unavailable" },
+      ),
+    ).resolves.toBe(false);
+    expect(toast.error.mock.calls).toEqual([
+      ["Card purchases are unavailable", { description: "Funding is not enabled for this app" }],
+    ]);
   });
 
   it("reads the sandbox flag from the environment", () => {

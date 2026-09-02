@@ -1,8 +1,8 @@
 import { type Address, encodeFunctionData, erc20Abi, type Hash, type Hex, type PublicClient } from "viem";
+import { isNativeToken } from "./guided-top-up";
 import {
   type ExecutableSquidDepositQuote,
   FILECOIN_CHAIN_ID,
-  isNativeToken,
   SQUID_API_BASE_URL,
   type SquidClient,
   type SquidDepositRouteRequest,

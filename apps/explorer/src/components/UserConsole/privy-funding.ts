@@ -1,4 +1,5 @@
 import type { useFiatOnramp } from "@privy-io/react-auth";
+import { toast } from "sonner";
 
 /** Privy's card and exchange onramps deliver to Base; the funding dialog swaps it to USDFC. */
 export const BASE_CHAIN_ID = 8453;
@@ -27,6 +28,32 @@ export function isFundingExit(error: unknown): boolean {
   }
   const message = (error instanceof Error ? error.message : typeof error === "string" ? error : "").trim();
   return message === "" || FUNDING_EXIT_MESSAGES.some((pattern) => pattern.test(message));
+}
+
+/**
+ * Runs a Privy funding modal (card, transfer picker, gas) and reports whether it
+ * completed. The user closing the modal is not an error; anything else is
+ * shown as a toast under `unavailableTitle`.
+ */
+export async function runPrivyFunding(
+  flow: () => Promise<unknown>,
+  {
+    fallbackDescription = "Enable funding in the Privy dashboard.",
+    unavailableTitle,
+  }: {
+    fallbackDescription?: string;
+    unavailableTitle: string;
+  },
+): Promise<boolean> {
+  try {
+    await flow();
+    return true;
+  } catch (error) {
+    if (!isFundingExit(error)) {
+      toast.error(unavailableTitle, { description: error instanceof Error ? error.message : fallbackDescription });
+    }
+    return false;
+  }
 }
 
 export function isSandboxFlag(value: string | undefined): boolean {

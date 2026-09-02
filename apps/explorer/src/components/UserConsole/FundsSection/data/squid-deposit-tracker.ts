@@ -1,10 +1,9 @@
-import { type Address, type Hash, isAddress } from "viem";
+import { type Address, type Hash, isAddress, isHash } from "viem";
+import type { StorageLike } from "./storage";
 
 const STORAGE_PREFIX = "filecoin-pay:squid-deposit:v1";
 /** Fired on `window` when a pending deposit is saved or cleared in this tab; `storage` events cover other tabs. */
 export const PENDING_SQUID_DEPOSIT_EVENT = "filecoin-pay:squid-deposit-changed";
-
-type StorageLike = Pick<Storage, "getItem" | "removeItem" | "setItem">;
 
 /** A broadcast Squid deposit route whose Filecoin Pay credit is still pending. */
 export interface PendingSquidDeposit {
@@ -56,7 +55,7 @@ export function loadPendingSquidDeposit(storage: StorageLike, recipient: Address
       typeof parsed.quoteId !== "string" ||
       parsed.quoteId === "" ||
       typeof parsed.transactionHash !== "string" ||
-      !/^0x[0-9a-fA-F]{64}$/.test(parsed.transactionHash) ||
+      !isHash(parsed.transactionHash) ||
       !isDigits(parsed.sourceAmount) ||
       !isDigits(parsed.minimumDestinationAmount) ||
       !isDigits(parsed.fundsBefore) ||
