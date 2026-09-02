@@ -2,6 +2,7 @@
 
 import { Button } from "@filecoin-foundation/ui-filecoin/Button";
 import { Input } from "@filecoin-foundation/ui-filecoin/Input";
+import { ExternalTextLink } from "@filecoin-foundation/ui-filecoin/TextLink/ExternalTextLink";
 import {
   Dialog,
   DialogContent,
@@ -117,16 +118,18 @@ export function describeWallet(wallet: Pick<ConnectedWallet, "address" | "wallet
   return `${name} (${formatAddress(wallet.address)})`;
 }
 
-/** Privy reports wallet chains as CAIP-2 ids such as `eip155:8453`. */
 function pickDefaultWallet(wallets: readonly ConnectedWallet[]): ConnectedWallet | undefined {
   return wallets.find(isPrivyEmbeddedWallet) ?? wallets[0];
 }
 
-function formatTokenAmount(amount: bigint, decimals: number): string {
+function formatTokenAmount(amount: bigint, decimals: number, maxFractionDigits = 2): string {
   const [whole, fraction = ""] = formatUnits(amount, decimals).split(".");
-  const trimmed = fraction.replace(/0+$/, "").slice(0, 2);
+  const trimmed = fraction.replace(/0+$/, "").slice(0, maxFractionDigits);
   return trimmed ? `${whole}.${trimmed}` : whole;
 }
+
+// Gas amounts are small, so they get the same four decimals as the top-up offer.
+const NATIVE_FRACTION_DIGITS = 4;
 
 type FundWithUsdcDialogProps = {
   accountId: string;
@@ -546,15 +549,8 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
           <DialogTitle>Fund with USDC</DialogTitle>
           <DialogDescription>
             Pay USDC from any connected wallet. It is swapped to USDFC via{" "}
-            <a
-              className='underline underline-offset-2'
-              href='https://app.squidrouter.com/'
-              rel='noopener noreferrer'
-              target='_blank'
-            >
-              Squid
-            </a>{" "}
-            and deposited into your account. Nothing to sign on Filecoin, no FIL needed.
+            <ExternalTextLink href='https://app.squidrouter.com/'>Squid</ExternalTextLink> and deposited into your
+            account. Nothing to sign on Filecoin, no FIL needed.
             {recipient ? (
               <span className='mt-1 block font-mono text-xs'>Account {formatAddress(recipient)}</span>
             ) : null}
@@ -591,7 +587,7 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                   Check again
                 </Button>
                 <Button
-                  aria-label='Dismiss pendingDeposit deposit'
+                  aria-label='Dismiss pending deposit'
                   disabled={isBusy}
                   onClick={dismissPendingDeposit}
                   size='compact'
@@ -608,15 +604,16 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                 <div className='grid gap-2'>
                   <div className='flex items-center justify-between gap-2'>
                     <Label htmlFor='fund-with-usdc-wallet'>Pay from</Label>
-                    <button
+                    <Button
                       aria-label='Connect another wallet'
-                      className='text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50'
                       disabled={isBusy}
                       onClick={() => connectWallet()}
+                      size='compact'
                       type='button'
+                      variant='ghost'
                     >
                       Connect another
-                    </button>
+                    </Button>
                   </div>
                   <Select
                     disabled={isBusy || !areWalletsReady || wallets.length === 0}
@@ -690,15 +687,15 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                 <div className='flex items-center justify-between gap-2'>
                   <Label htmlFor={amountInputId}>Amount ({sourceToken?.symbol ?? "USDC"})</Label>
                   {balances && sourceToken && (
-                    <button
-                      aria-label='Use full balance'
-                      className='text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50'
+                    <Button
                       disabled={isBusy || balances.token === 0n}
                       onClick={() => setAmount(formatUnits(balances.token, sourceToken.decimals))}
+                      size='compact'
                       type='button'
+                      variant='ghost'
                     >
-                      Balance {formatTokenAmount(balances.token, sourceToken.decimals)} · Max
-                    </button>
+                      Max ({formatTokenAmount(balances.token, sourceToken.decimals)} {sourceToken.symbol})
+                    </Button>
                   )}
                 </div>
                 <Input
@@ -786,8 +783,8 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
                     </span>
                   </div>
                   {isUnfavorableRate(rate) && (
-                    <p className='mt-1 inline-flex items-start gap-2 text-amber-700'>
-                      <AlertCircle className='mt-0.5 h-4 w-4 shrink-0' />
+                    <p className='mt-1 inline-flex items-start gap-2 text-muted-foreground'>
+                      <AlertCircle aria-hidden className='mt-0.5 h-4 w-4 shrink-0' />
                       <span>
                         This route returns noticeably less than 1 USDFC per {sourceToken.symbol}. Continue only if the
                         rate is acceptable.
@@ -798,10 +795,13 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
               )}
 
               {hasInsufficientGas && sourceChain && (
-                <div className='flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-800'>
-                  <span>
-                    Needs about {formatTokenAmount(requiredNative ?? 0n, 18)} {nativeSymbol} on {sourceChain.name} for
-                    gas and fees.
+                <div className='flex flex-wrap items-center justify-between gap-2 rounded-md border p-3'>
+                  <span className='inline-flex items-start gap-2'>
+                    <AlertCircle aria-hidden className='mt-0.5 h-4 w-4 shrink-0 text-destructive' />
+                    <span>
+                      Needs about {formatTokenAmount(requiredNative ?? 0n, 18, NATIVE_FRACTION_DIGITS)} {nativeSymbol}{" "}
+                      on {sourceChain.name} for gas and fees.
+                    </span>
                   </span>
                   <Button
                     aria-label={hasPrivyLogin ? "Add gas with Privy" : "Log in to add gas"}
@@ -866,13 +866,8 @@ export function FundWithUsdcDialog({ accountId, onOpenChange, open }: FundWithUs
 function TransactionLink({ explorerUrl, hash }: { explorerUrl?: string; hash: Hash }) {
   if (!explorerUrl) return <code className='block break-all text-xs'>{hash}</code>;
   return (
-    <a
-      className='block break-all text-xs underline underline-offset-2'
-      href={`${explorerUrl}/tx/${hash}`}
-      rel='noopener noreferrer'
-      target='_blank'
-    >
+    <ExternalTextLink className='block break-all text-xs' href={`${explorerUrl}/tx/${hash}`}>
       {hash}
-    </a>
+    </ExternalTextLink>
   );
 }
