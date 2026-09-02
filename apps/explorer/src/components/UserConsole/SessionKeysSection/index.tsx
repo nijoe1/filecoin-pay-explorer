@@ -13,7 +13,7 @@ import { type SessionKeyWithStatus, useSessionKeys } from "@/hooks/useSessionKey
 import type { Network } from "@/types";
 import type { AuthorizeParamError } from "@/utils/authorizeParam";
 import { formatAddress, formatDateTime } from "@/utils/formatter";
-import { hasUniformExpiry, SCOPE_BY_ID, type ScopeId } from "@/utils/sessionKeys";
+import { existingKeyPrefill, hasUniformExpiry, SCOPE_BY_ID, type ScopeId } from "@/utils/sessionKeys";
 import { CreateKeyFlow } from "./CreateKeyFlow";
 import { RevokeDialog } from "./RevokeDialog";
 
@@ -108,18 +108,9 @@ const ConnectedSessionKeys = ({
   const cliPrefill = prefillAddress != null && !isSelfAuthRequest && !isNetworkMismatch ? prefillAddress : null;
   const linkPrefill = createSource === "link" ? cliPrefill : null;
   // Re-authorizing a key this browser already knows: the dialog becomes an add-scopes flow
-  const existingForPrefill = cliPrefill
-    ? keys.find((k) => k.sessionKeyPublic.toLowerCase() === cliPrefill.toLowerCase())
-    : undefined;
-  const existingKeyForPrefill = existingForPrefill
-    ? {
-        name: existingForPrefill.name,
-        expirySec:
-          existingForPrefill.status === "active" && existingForPrefill.maxExpiry > 0n
-            ? existingForPrefill.maxExpiry
-            : null,
-      }
-    : null;
+  const existingKeyForPrefill = existingKeyPrefill(
+    cliPrefill ? keys.find((k) => k.sessionKeyPublic.toLowerCase() === cliPrefill.toLowerCase()) : undefined,
+  );
 
   const handleSync = async () => {
     setSyncing(true);
