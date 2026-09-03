@@ -1,10 +1,11 @@
 import { Button } from "@filecoin-foundation/ui-filecoin/Button";
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useConnection } from "wagmi";
 import { getChain } from "@/constants/chains";
 import useSynapse from "@/hooks/useSynapse";
+import { useFundingLaunch } from "../FundingLaunchContext";
 import { useTopUpActivity } from "../TopUpActivityContext";
 import { GuidedTopUpDialog } from "./components";
 import { withoutTopUpSearchParam } from "./data/guided-top-up";
@@ -13,10 +14,9 @@ import { getSquidAcquisitionStorageKey, hasSavedSquidAcquisition } from "./data/
 interface TopUpDialogControllerProps {
   accountId: string;
   children?: (openTopUp: () => void, isOpen: boolean) => ReactNode;
-  showTrigger?: boolean;
 }
 
-export function TopUpDialogController({ accountId, children, showTrigger = false }: TopUpDialogControllerProps) {
+export function TopUpDialogController({ accountId, children }: TopUpDialogControllerProps) {
   const [open, setOpen] = useState(false);
   const [hasSavedAcquisition, setHasSavedAcquisition] = useState(false);
   const [recoveryRevision, setRecoveryRevision] = useState(0);
@@ -30,7 +30,7 @@ export function TopUpDialogController({ accountId, children, showTrigger = false
   const targetChain = getChain("mainnet");
   const { data: accountSummary, isFetching: isAccountSummaryLoading } = useQuery({
     enabled: open && !!address && synapse?.chain.id === targetChain.id,
-    queryFn: synapse ? () => synapse.payments.accountSummary() : undefined,
+    queryFn: synapse ? () => synapse.payments.accountSummary() : skipToken,
     queryKey: ["payments", "account-summary", targetChain.id, address],
   });
 
@@ -38,6 +38,12 @@ export function TopUpDialogController({ accountId, children, showTrigger = false
     setOpen(true);
     setTopUpActive(true);
   }, [setTopUpActive]);
+  // The console-wide add-funds picker offers the guided swap only while this controller is mounted.
+  const { setGuidedTopUp } = useFundingLaunch();
+  useEffect(() => {
+    setGuidedTopUp(openTopUp);
+    return () => setGuidedTopUp(null);
+  }, [openTopUp, setGuidedTopUp]);
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       setOpen(nextOpen);
@@ -111,19 +117,12 @@ export function TopUpDialogController({ accountId, children, showTrigger = false
     <>
       {hasSavedAcquisition && !open && (
         <div className='flex justify-center'>
-          <Button aria-label='View top-up in progress' onClick={openTopUp} variant='tertiary'>
-            Top-up in progress — view
+          <Button aria-label='View swap in progress' onClick={openTopUp} variant='tertiary'>
+            Swap in progress — view
           </Button>
         </div>
       )}
       {children?.(openTopUp, open)}
-      {showTrigger && (
-        <div className='flex justify-center'>
-          <Button onClick={openTopUp} variant='primary'>
-            Fund with another token
-          </Button>
-        </div>
-      )}
       <GuidedTopUpDialog
         accountId={accountId}
         accountSummary={accountSummary}
