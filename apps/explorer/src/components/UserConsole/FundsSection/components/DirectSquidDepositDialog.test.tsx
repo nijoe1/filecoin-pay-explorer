@@ -1,5 +1,6 @@
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { formatAddress } from "@/utils/formatter";
 import { type ExecuteSquidDepositInput, SquidDepositError } from "../data/squid-deposit-execution";
 import { getPendingSquidDepositKey, type PendingSquidDeposit } from "../data/squid-deposit-tracker";
 import { DirectSquidDepositDialog } from "./DirectSquidDepositDialog";
@@ -17,7 +18,7 @@ const state = vi.hoisted(() => ({
   requestRoute: vi.fn(),
 }));
 const wallet = vi.hoisted(() => ({
-  address: "0x1111111111111111111111111111111111111111" as const,
+  address: "0x1111111111111111111111111111111111111111" as `0x${string}`,
   getEthereumProvider: vi.fn(async () => ({
     request: vi.fn(async () => ["0x1111111111111111111111111111111111111111"]),
   })),
@@ -27,6 +28,10 @@ const connectedWallets = vi.hoisted(() => ({
   current: [] as (typeof wallet)[],
 }));
 const topUp = vi.hoisted(() => ({ setActive: vi.fn() }));
+const privy = vi.hoisted(() => ({
+  connectWallet: vi.fn(),
+  onConnected: undefined as ((params: { wallet: { address: string } }) => void) | undefined,
+}));
 const query = vi.hoisted(() => ({
   allowance: 100_000_000n,
   balanceIsError: false,
@@ -86,7 +91,13 @@ const query = vi.hoisted(() => ({
 }));
 connectedWallets.current.push(wallet);
 
-vi.mock("@privy-io/react-auth", () => ({ useWallets: () => ({ wallets: connectedWallets.current }) }));
+vi.mock("@privy-io/react-auth", () => ({
+  useConnectWallet: ({ onSuccess }: { onSuccess: (params: { wallet: { address: string } }) => void }) => {
+    privy.onConnected = onSuccess;
+    return { connectWallet: privy.connectWallet };
+  },
+  useWallets: () => ({ wallets: connectedWallets.current }),
+}));
 vi.mock("wagmi", () => ({
   useAccount: () => ({ address: state.liveRecipient }),
   usePublicClient: ({ chainId }: { chainId: number }) => ({ chain: { id: chainId } }),
@@ -239,6 +250,8 @@ describe("DirectSquidDepositDialog safety integration", () => {
     wallet.getEthereumProvider.mockClear();
     wallet.switchChain.mockClear();
     topUp.setActive.mockClear();
+    privy.connectWallet.mockClear();
+    connectedWallets.current.splice(0, connectedWallets.current.length, wallet);
     vi.stubGlobal("navigator", {
       locks: {
         request: vi.fn(async (_name: string, _options: LockOptions, callback: (lock: Lock | null) => unknown) =>
@@ -395,6 +408,26 @@ describe("DirectSquidDepositDialog safety integration", () => {
     expect(options.every((option) => option.props.disabled)).toBe(true);
     expect(tokenSelect().props.value).toBe("");
     expect(JSON.stringify(renderer.toJSON())).toContain("This wallet holds none of these tokens");
+  });
+
+  it("lets another wallet connect and pay without changing the funded account", async () => {
+    let renderer!: ReactTestRenderer;
+    const render = () => <DirectSquidDepositDialog accountId='account' onOpenChange={vi.fn()} open />;
+    await act(async () => {
+      renderer = create(render());
+    });
+    await act(async () => renderer.root.findByProps({ "aria-label": "Connect another wallet" }).props.onClick());
+    expect(privy.connectWallet).toHaveBeenCalledOnce();
+
+    const other = { ...wallet, address: OTHER };
+    connectedWallets.current.push(other);
+    await act(async () => {
+      privy.onConnected?.({ wallet: other });
+      renderer.update(render());
+    });
+
+    expect(renderer.root.findByProps({ id: "direct-squid-wallet" }).props.value).toBe(OTHER);
+    expect(JSON.stringify(renderer.toJSON())).toContain(`"Pay account ","${formatAddress(RECIPIENT)}"`);
   });
 
   it("fills the amount with the selected token's spendable balance", async () => {

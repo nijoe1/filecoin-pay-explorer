@@ -12,7 +12,7 @@ import {
 } from "@filecoin-pay/ui/components/dialog";
 import { Label } from "@filecoin-pay/ui/components/label";
 import { SQUID_ROUTER_ADDRESS } from "@filecoin-project/squid-evm-funding";
-import { useWallets } from "@privy-io/react-auth";
+import { useConnectWallet, useWallets } from "@privy-io/react-auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -124,6 +124,13 @@ export function DirectSquidDepositDialog({
 }) {
   const { address: connectedRecipient } = useAccount();
   const { wallets } = useWallets();
+  // A wallet connected from here pays; the console's own account stays as it is.
+  const { connectWallet } = useConnectWallet({
+    onSuccess: ({ wallet }) => {
+      if ("address" in wallet && typeof wallet.address === "string") setPayingAddress(wallet.address);
+      setReviewed(null);
+    },
+  });
   const { setTopUpActive } = useTopUpActivity();
   const queryClient = useQueryClient();
   const [payingAddress, setPayingAddress] = useState("");
@@ -837,7 +844,19 @@ export function DirectSquidDepositDialog({
           ) : (
             <>
               <div className='grid gap-1'>
-                <Label htmlFor='direct-squid-wallet'>Paying wallet</Label>
+                <div className='flex items-center justify-between gap-2'>
+                  <Label htmlFor='direct-squid-wallet'>Paying wallet</Label>
+                  <Button
+                    aria-label='Connect another wallet'
+                    disabled={busy}
+                    onClick={() => connectWallet()}
+                    size='compact'
+                    type='button'
+                    variant='ghost'
+                  >
+                    Connect another
+                  </Button>
+                </div>
                 <select
                   id='direct-squid-wallet'
                   className='h-10 rounded-md border bg-background px-3'
