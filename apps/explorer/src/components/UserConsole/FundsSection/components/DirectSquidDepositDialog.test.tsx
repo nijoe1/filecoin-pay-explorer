@@ -410,6 +410,39 @@ describe("DirectSquidDepositDialog safety integration", () => {
     expect(JSON.stringify(renderer.toJSON())).toContain("This wallet holds none of these tokens");
   });
 
+  it("offers a card purchase when the wallet holds nothing or too little of the token", async () => {
+    const cardPurchase = {
+      buyWithCard: vi.fn(),
+      isBusy: false,
+      label: "Buy USDC with card",
+      statusMessage: null,
+    };
+    const render = () => (
+      <DirectSquidDepositDialog accountId='account' cardPurchase={cardPurchase} onOpenChange={vi.fn()} open />
+    );
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(render());
+    });
+    const offers = () => renderer.root.findAllByProps({ "aria-label": "Buy USDC with card" }, { deep: false });
+    expect(offers()).toHaveLength(0);
+
+    await act(async () => {
+      amountInput(renderer).props.onChange({ target: { value: "500" } });
+    });
+    expect(JSON.stringify(renderer.toJSON())).toContain("does not have enough USDC");
+    await act(async () => renderer.root.findByProps({ "aria-label": "Buy USDC with card" }).props.onClick());
+    expect(cardPurchase.buyWithCard).toHaveBeenCalledOnce();
+
+    query.inventory = { [USDC.toLowerCase()]: 0n, [USDT.toLowerCase()]: 0n };
+    await act(async () => {
+      amountInput(renderer).props.onChange({ target: { value: "" } });
+      renderer.update(render());
+    });
+    expect(JSON.stringify(renderer.toJSON())).toContain("or buy USDC with card");
+    expect(offers()).toHaveLength(1);
+  });
+
   it("lets another wallet connect and pay without changing the funded account", async () => {
     let renderer!: ReactTestRenderer;
     const render = () => <DirectSquidDepositDialog accountId='account' onOpenChange={vi.fn()} open />;

@@ -99,6 +99,14 @@ const DEPOSIT_TARGET = {
   usdfc: mainnet.contracts.usdfc.address,
 };
 
+/** Privy's card onramp, offered when the paying wallet cannot cover the deposit. */
+export type CardPurchaseOffer = {
+  buyWithCard: () => void;
+  isBusy: boolean;
+  label: string;
+  statusMessage: string | null;
+};
+
 type ReviewedDeposit = {
   approvalRequired: boolean;
   approvalResetRequired: boolean;
@@ -113,11 +121,13 @@ type ReviewedDeposit = {
 
 export function DirectSquidDepositDialog({
   accountId,
+  cardPurchase,
   initialSource,
   onOpenChange,
   open,
 }: {
   accountId: string;
+  cardPurchase?: CardPurchaseOffer;
   initialSource?: { amount: bigint; chainId: number; decimals: number; token: string };
   onOpenChange: (open: boolean) => void;
   open: boolean;
@@ -695,6 +705,29 @@ export function DirectSquidDepositDialog({
     return balance > reserve ? balance - reserve : 0n;
   })();
   const busy = stage !== null;
+  const hasInsufficientToken =
+    parsedAmount !== null && !balancesQuery.isError && !!balancesQuery.data && balancesQuery.data.token < parsedAmount;
+  const cardOffer =
+    cardPurchase && !pending && !initialSource && (holdsNothingOnChain || hasInsufficientToken) ? (
+      <div className='flex flex-wrap items-center justify-between gap-2'>
+        <span className='text-xs text-muted-foreground'>Purchased USDC lands on Base in your account wallet.</span>
+        <Button
+          aria-label={cardPurchase.label}
+          disabled={busy || cardPurchase.isBusy}
+          onClick={cardPurchase.buyWithCard}
+          size='compact'
+          type='button'
+          variant='tertiary'
+        >
+          {cardPurchase.label}
+        </Button>
+        {cardPurchase.statusMessage ? (
+          <span className='w-full text-xs text-muted-foreground' role='status'>
+            {cardPurchase.statusMessage}
+          </span>
+        ) : null}
+      </div>
+    ) : null;
   const isQuoting = parsedAmount !== null && !reviewed && (!isAmountSettled || (quoteQuery.isFetching && !quote));
   const explorerUrl = sourceChain?.blockExplorers?.default.url;
   const reviewedSourceChain = reviewed
@@ -920,10 +953,13 @@ export function DirectSquidDepositDialog({
                   <p className='text-sm text-muted-foreground'>No supported tokens are available on this network.</p>
                 ) : null}
                 {holdsNothingOnChain && !initialSource ? (
-                  <p className='text-sm text-muted-foreground' role='status'>
-                    This wallet holds none of these tokens on {sourceChain?.name ?? "this network"}. Choose another
-                    network or wallet.
-                  </p>
+                  <div className='grid gap-2 rounded-md border p-3'>
+                    <p className='text-sm text-muted-foreground' role='status'>
+                      This wallet holds none of these tokens on {sourceChain?.name ?? "this network"}. Choose another
+                      network or wallet{cardPurchase ? ", or buy USDC with card" : ""}.
+                    </p>
+                    {cardOffer}
+                  </div>
                 ) : null}
                 {initialSource && !tokensQuery.isPending && !tokensQuery.isError && !sourceToken ? (
                   <p className='text-sm text-destructive' role='alert'>
@@ -1013,12 +1049,13 @@ export function DirectSquidDepositDialog({
                   {walletErrorMessage(quoteQuery.error, "Squid could not quote this amount.")}
                 </p>
               ) : null}
-              {!sourceIsNative &&
-              parsedAmount !== null &&
-              !balancesQuery.isError &&
-              balancesQuery.data &&
-              balancesQuery.data.token < parsedAmount ? (
-                <p className='text-destructive'>The paying wallet does not have enough {sourceToken?.symbol}.</p>
+              {!sourceIsNative && hasInsufficientToken ? (
+                <div className='grid gap-2 rounded-md border border-destructive/40 p-3'>
+                  <p className='text-destructive' role='alert'>
+                    {`The paying wallet does not have enough ${sourceToken?.symbol ?? "of this token"}.`}
+                  </p>
+                  {cardOffer}
+                </div>
               ) : null}
               {requiredNative !== null &&
               !balancesQuery.isError &&

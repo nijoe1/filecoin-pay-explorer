@@ -13,6 +13,7 @@ const dialogs = vi.hoisted(() => ({
   onPickerOpenChange: undefined as ((open: boolean) => void) | undefined,
   onSelect: undefined as ((method: "card" | "deposit" | "squid") => void) | undefined,
   onSquidOpenChange: undefined as ((open: boolean) => void) | undefined,
+  squidCardPurchase: undefined as unknown,
   squidInitialSource: undefined as { amount: bigint; chainId: number; decimals: number; token: string } | undefined,
   squidOpen: false,
 }));
@@ -86,14 +87,17 @@ vi.mock("./DepositDialog", () => ({
 }));
 vi.mock("./FundsSection/components/DirectSquidDepositDialog", () => ({
   DirectSquidDepositDialog: ({
+    cardPurchase,
     initialSource,
     onOpenChange,
     open,
   }: {
+    cardPurchase?: unknown;
     initialSource?: { amount: bigint; chainId: number; decimals: number; token: string };
     onOpenChange: (open: boolean) => void;
     open: boolean;
   }) => {
+    dialogs.squidCardPurchase = cardPurchase;
     dialogs.squidInitialSource = initialSource;
     dialogs.squidOpen = open;
     dialogs.onSquidOpenChange = onOpenChange;
@@ -145,9 +149,9 @@ beforeEach(() => {
   dialogs.accountId = "";
   dialogs.openTopUp.mockClear();
   dialogs.squidOpen = false;
+  dialogs.onSquidOpenChange = undefined;
   dialogs.squidInitialSource = undefined;
   card.buyWithCard.mockClear();
-  dialogs.onSquidOpenChange = undefined;
 });
 
 describe("FundingHost", () => {
@@ -169,24 +173,6 @@ describe("FundingHost", () => {
     act(() => dialogs.onSelect?.("squid"));
     expect(dialogs.squidOpen).toBe(true);
     expect(dialogs.openTopUp).not.toHaveBeenCalled();
-  });
-
-  it("keeps the picker context while Privy starts a card purchase", async () => {
-    const renderer = await renderHost();
-    act(() => renderer.root.findByProps({ "data-open": true }).props.onClick());
-    act(() => dialogs.onSelect?.("card"));
-
-    expect(card.buyWithCard).toHaveBeenCalledOnce();
-    expect(find(renderer, "data-picker-open").props["data-picker-open"]).toBe(true);
-
-    act(() => card.onPurchased?.(12_500_000n));
-    expect(dialogs.squidOpen).toBe(true);
-    expect(dialogs.squidInitialSource).toEqual({
-      amount: 12_500_000n,
-      chainId: 8453,
-      decimals: 6,
-      token: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-    });
   });
 
   it("opens Squid directly and closes it on cancellation", async () => {
@@ -216,6 +202,25 @@ describe("FundingHost", () => {
     await rerenderHost(renderer);
 
     expect(dialogs.squidOpen).toBe(false);
+  });
+
+  it("keeps the picker context while Privy starts a card purchase", async () => {
+    const renderer = await renderHost();
+    act(() => renderer.root.findByProps({ "data-open": true }).props.onClick());
+    act(() => dialogs.onSelect?.("card"));
+
+    expect(card.buyWithCard).toHaveBeenCalledOnce();
+    expect(find(renderer, "data-picker-open").props["data-picker-open"]).toBe(true);
+
+    act(() => card.onPurchased?.(12_500_000n));
+    expect(dialogs.squidOpen).toBe(true);
+    expect(dialogs.squidCardPurchase).toBe(card);
+    expect(dialogs.squidInitialSource).toEqual({
+      amount: 12_500_000n,
+      chainId: 8453,
+      decimals: 6,
+      token: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+    });
   });
 
   it("opens direct deposit without a one-choice picker on Calibration", async () => {

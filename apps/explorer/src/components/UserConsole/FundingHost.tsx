@@ -91,6 +91,7 @@ function FundingDialogs({ address, chainId }: { address: string; chainId: number
             ) : null}
             <DirectSquidDepositDialog
               accountId={address.toLowerCase()}
+              cardPurchase={card}
               initialSource={
                 cardSourceAmount
                   ? { amount: cardSourceAmount, chainId: CARD_CHAIN_ID, decimals: CARD_USDC_DECIMALS, token: CARD_USDC }
