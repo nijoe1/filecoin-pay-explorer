@@ -18,16 +18,34 @@ vi.mock("@filecoin-pay/ui/components/dropdown-menu", () => ({
   DropdownMenuSeparator: () => <hr />,
   DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
+const session = vi.hoisted(() => ({
+  disconnect: vi.fn(),
+  logout: vi.fn(async () => undefined),
+  walletDisconnect: vi.fn(),
+}));
+
 vi.mock("@privy-io/react-auth", () => ({
-  useLogout: () => ({ logout: vi.fn() }),
+  useLogout: () => ({ logout: session.logout }),
   usePrivy: () => ({ authenticated: false }),
-  useWallets: () => ({ wallets: [] }),
+  useWallets: () => ({
+    wallets: [
+      {
+        address: "0x1111111111111111111111111111111111111111",
+        connectorType: "injected",
+        disconnect: session.walletDisconnect,
+      },
+    ],
+  }),
 }));
 vi.mock("wagmi", () => ({
   useAccount: () => ({ address: "0x1111111111111111111111111111111111111111" }),
   useBalance: () => ({ data: { value: 0n }, isLoading: false }),
+  useDisconnect: () => ({ disconnect: session.disconnect }),
   useReadContract: () => ({ data: 0n, isLoading: false }),
   useWalletClient: () => ({ data: undefined }),
+}));
+vi.mock("@/components/UserConsole/console-wallet", () => ({
+  consoleWalletSelector: { pause: vi.fn(), resume: vi.fn() },
 }));
 vi.mock("@/hooks/useSynapse", () => ({
   default: () => ({ constants: { contracts: { usdfc: "0x2222222222222222222222222222222222222222" } } }),
@@ -58,5 +76,25 @@ describe("Balance", () => {
     expect(addFunds).toBeDefined();
     act(() => addFunds?.props.onClick());
     expect(renderer.root.findByType("output").props["data-open"]).toBe(true);
+  });
+
+  it("disconnects an injected connect-only wallet through wagmi and Privy", async () => {
+    let renderer!: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(
+        <FundingLaunchProvider>
+          <Balance />
+        </FundingLaunchProvider>,
+      );
+    });
+
+    const exit = renderer.root
+      .findAllByProps({ "data-menu-item": true })
+      .find((item) => item.findAllByType("span").some((span) => span.children.includes("Disconnect")));
+    expect(exit).toBeDefined();
+    await act(async () => exit?.props.onClick());
+    expect(session.disconnect).toHaveBeenCalledOnce();
+    expect(session.walletDisconnect).toHaveBeenCalledOnce();
+    expect(session.logout).not.toHaveBeenCalled();
   });
 });

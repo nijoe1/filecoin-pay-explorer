@@ -13,7 +13,7 @@ import { ArrowUpRightIcon, Check, Copy, LogOut, Wallet } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { type Address, erc20Abi, formatEther } from "viem";
-import { useAccount, useBalance, useReadContract, useWalletClient } from "wagmi";
+import { useAccount, useBalance, useDisconnect, useReadContract, useWalletClient } from "wagmi";
 import FilecoinLogo from "@/assests/FilecoinLogo";
 import USDFCLogo from "@/assests/USDFCLogo";
 import { exitWalletSession, getWalletExitAction } from "@/components/shared/CustomConnectButton/state";
@@ -28,9 +28,10 @@ const Balance = () => {
   const { authenticated } = usePrivy();
   const { logout } = useLogout();
   const { wallets } = useWallets();
+  const { disconnect } = useDisconnect();
   const { data: walletClient } = useWalletClient();
   const activeWallet = wallets.find((candidate) => candidate.address.toLowerCase() === address?.toLowerCase());
-  const exitAction = getWalletExitAction(authenticated, activeWallet?.connectorType);
+  const exitAction = getWalletExitAction(authenticated);
   const [copied, setCopied] = useState(false);
   const { openAddFunds } = useFundingLaunch();
   const { data: tFilBalance, isLoading: isLoadingtFilBalance } = useBalance({
@@ -76,15 +77,15 @@ const Balance = () => {
 
   const exitWallet = async () => {
     try {
-      if (exitAction === "manual-disconnect") {
-        toast.info("Disconnect this site from your wallet extension");
-        return;
-      }
-
       await exitWalletSession({
         authenticated,
         logout,
-        disconnect: activeWallet ? () => activeWallet.disconnect() : undefined,
+        // wagmi drops the connection (and revokes the extension's permission
+        // where the wallet supports it); Privy forgets the wallet where it can.
+        disconnect: () => {
+          disconnect();
+          activeWallet?.disconnect();
+        },
         pauseSelection: consoleWalletSelector.pause,
         resumeSelection: consoleWalletSelector.resume,
       });
@@ -130,13 +131,7 @@ const Balance = () => {
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => void exitWallet()} className='cursor-pointer py-2'>
           <LogOut />
-          <span className='text-base text-zinc-950'>
-            {exitAction === "logout"
-              ? "Log out"
-              : exitAction === "manual-disconnect"
-                ? "Disconnect in wallet"
-                : "Disconnect"}
-          </span>
+          <span className='text-base text-zinc-950'>{exitAction === "logout" ? "Log out" : "Disconnect"}</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel className='text-zinc-600 py-2'>Tools</DropdownMenuLabel>

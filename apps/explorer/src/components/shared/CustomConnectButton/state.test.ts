@@ -31,13 +31,12 @@ describe("getWalletEntryState", () => {
 });
 
 describe("getWalletExitAction", () => {
-  it("labels Privy sessions as logout and connection-only wallets as disconnect", () => {
+  it("labels Privy sessions as logout and every connection-only wallet as disconnect", () => {
     expect(getWalletExitAction(true)).toBe("logout");
     expect(getWalletExitAction(false)).toBe("disconnect");
-    expect(getWalletExitAction(false, "injected")).toBe("manual-disconnect");
   });
 
-  it("calls only the exit operation for the active session type", async () => {
+  it("pauses reselection and calls only the exit operation for the active session type", async () => {
     const logout = vi.fn(async () => undefined);
     const disconnect = vi.fn();
     const pauseSelection = vi.fn();
@@ -48,9 +47,19 @@ describe("getWalletExitAction", () => {
     expect(disconnect).not.toHaveBeenCalled();
 
     logout.mockClear();
-    await exitWalletSession({ authenticated: false, logout, disconnect });
+    pauseSelection.mockClear();
+    await exitWalletSession({ authenticated: false, logout, disconnect, pauseSelection });
+    expect(pauseSelection).toHaveBeenCalledOnce();
     expect(logout).not.toHaveBeenCalled();
     expect(disconnect).toHaveBeenCalledOnce();
+  });
+
+  it("restores wallet selection when a disconnect fails", async () => {
+    const resumeSelection = vi.fn();
+    await expect(
+      exitWalletSession({ authenticated: false, logout: vi.fn(async () => undefined), resumeSelection }),
+    ).rejects.toThrow("Connected wallet was not found");
+    expect(resumeSelection).toHaveBeenCalledOnce();
   });
 
   it("restores wallet selection when logout fails", async () => {
