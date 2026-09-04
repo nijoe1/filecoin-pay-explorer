@@ -5,7 +5,8 @@ import {
   assertExecutableQuoteWithinReview,
   buildDepositPostHook,
   captureReviewedSquidDepositCaps,
-  FIL_GAS_TOP_UP_AMOUNT,
+  estimateFilGasTopUp,
+  FIL_GAS_TOP_UP_FLOOR,
   getDepositNetworkFeeMaximum,
   getDepositRequiredNativeBalance,
   getSourceNativeCosts,
@@ -29,8 +30,8 @@ const PAYMENTS = "0x5555555555555555555555555555555555555555";
 const FAR_FUTURE = "4102444800";
 const topUp = {
   deadline: 1_700_604_800n,
-  minimumFil: 250_000_000_000_000_000n,
-  spendUsdfc: 625_000_000_000_000_000n,
+  minimumFil: 50_000_000_000_000_000n,
+  spendUsdfc: 125_000_000_000_000_000n,
 };
 
 const request = {
@@ -142,7 +143,7 @@ describe("buildDepositPostHook", () => {
     });
   });
 
-  it("swaps a fixed USDFC slice to at least 0.25 FIL before depositing the rest", () => {
+  it("swaps a USDFC slice to at least the planned FIL before depositing the rest", () => {
     const hook = buildDepositPostHook({ payments: PAYMENTS, usdfc: USDFC, recipient: RECIPIENT }, topUp);
 
     expect(hook.calls.map((call) => [call.callType, call.target, call.payload.tokenAddress])).toEqual([
@@ -163,7 +164,7 @@ describe("buildDepositPostHook", () => {
       args: [
         {
           amountIn: topUp.spendUsdfc,
-          amountOutMinimum: FIL_GAS_TOP_UP_AMOUNT,
+          amountOutMinimum: topUp.minimumFil,
           deadline: topUp.deadline,
           fee: WFIL_USDFC_POOL_FEE,
           recipient: SUSHI_V3_SWAP_ROUTER_ADDRESS,
@@ -175,12 +176,12 @@ describe("buildDepositPostHook", () => {
     });
     expect(decodeFunctionData({ abi: sushiSwapRouterAbi, data: unwrap })).toEqual({
       functionName: "unwrapWETH9",
-      args: [FIL_GAS_TOP_UP_AMOUNT, RECIPIENT],
+      args: [topUp.minimumFil, RECIPIENT],
     });
   });
 
-  it("rejects a top-up that does not guarantee the fixed 0.25 FIL", () => {
-    expect(() => buildDepositPostHook(request, { ...topUp, minimumFil: topUp.minimumFil - 1n })).toThrow(
+  it("rejects a top-up that guarantees less than the FIL floor", () => {
+    expect(() => buildDepositPostHook(request, { ...topUp, minimumFil: FIL_GAS_TOP_UP_FLOOR - 1n })).toThrow(
       "Invalid FIL gas top-up",
     );
   });
@@ -189,12 +190,25 @@ describe("buildDepositPostHook", () => {
 describe("planFilGasTopUp", () => {
   const filecoinSwap = { wfil: 1_000_000_000_000_000_000n, usdfc: 2_000_000_000_000_000_000n };
 
-  it("prices enough USDFC to guarantee 0.25 FIL with headroom", () => {
+  it("prices enough USDFC to guarantee the 0.05 FIL floor with headroom", () => {
     expect(planFilGasTopUp({ filecoinSwap, minimumDestinationAmount: 10n ** 19n }, now)).toEqual(topUp);
-    expect(FIL_GAS_TOP_UP_AMOUNT).toBe(250_000_000_000_000_000n);
+    expect(FIL_GAS_TOP_UP_FLOOR).toBe(50_000_000_000_000_000n);
   });
 
-  it("fails closed when the swap cannot be priced or would exceed a tenth of the deposit", () => {
+  it("sizes the top-up for a higher target and never below the floor", () => {
+    expect(planFilGasTopUp({ filecoinSwap, minimumDestinationAmount: 10n ** 19n }, now, 10n ** 17n)).toEqual({
+      ...topUp,
+      minimumFil: 10n ** 17n,
+      spendUsdfc: 250_000_000_000_000_000n,
+    });
+    expect(planFilGasTopUp({ filecoinSwap, minimumDestinationAmount: 10n ** 19n }, now, 1n)).toEqual(topUp);
+  });
+
+  it("lets a one-USDFC deposit fund its wallet", () => {
+    expect(planFilGasTopUp({ filecoinSwap, minimumDestinationAmount: 10n ** 18n }, now)).toEqual(topUp);
+  });
+
+  it("fails closed when the swap cannot be priced or would exceed half of the deposit", () => {
     expect(planFilGasTopUp({ minimumDestinationAmount: 10n ** 19n }, now)).toBeUndefined();
     expect(
       planFilGasTopUp({ filecoinSwap: { wfil: 0n, usdfc: 1n }, minimumDestinationAmount: 10n ** 19n }, now),
@@ -202,7 +216,16 @@ describe("planFilGasTopUp", () => {
     expect(
       planFilGasTopUp({ filecoinSwap: { wfil: 1n, usdfc: 0n }, minimumDestinationAmount: 10n ** 19n }, now),
     ).toBeUndefined();
-    expect(planFilGasTopUp({ filecoinSwap, minimumDestinationAmount: 6n * 10n ** 18n }, now)).toBeUndefined();
+    expect(planFilGasTopUp({ filecoinSwap, minimumDestinationAmount: 2n * 10n ** 17n }, now)).toBeUndefined();
+  });
+});
+
+describe("estimateFilGasTopUp", () => {
+  it("sends the floor at normal fees and more when Filecoin gas is expensive", () => {
+    expect(estimateFilGasTopUp(undefined)).toBe(FIL_GAS_TOP_UP_FLOOR);
+    expect(estimateFilGasTopUp(100n)).toBe(FIL_GAS_TOP_UP_FLOOR);
+    expect(estimateFilGasTopUp(200_000_000n)).toBe(120_000_000_000_000_000n);
+    expect(estimateFilGasTopUp(175_000_000n)).toBe(110_000_000_000_000_000n);
   });
 });
 
@@ -316,7 +339,7 @@ describe("parseSquidDepositRoute", () => {
       parseSquidDepositRoute(
         fakeRoute({
           params: { postHook: buildDepositPostHook(request, topUp) },
-          estimate: { toAmount: "6000000000000000000", toAmountMin: "6000000000000000000" },
+          estimate: { toAmount: "200000000000000000", toAmountMin: "200000000000000000" },
         }),
         { ...request, filGasTopUp: topUp },
         true,

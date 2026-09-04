@@ -36,9 +36,10 @@ const query = vi.hoisted(() => ({
   recipientFilIsFetching: false,
   filGasTopUp: {
     deadline: 1_700_604_800n,
-    minimumFil: 250_000_000_000_000_000n,
-    spendUsdfc: 625_000_000_000_000_000n,
+    minimumFil: 50_000_000_000_000_000n,
+    spendUsdfc: 125_000_000_000_000_000n,
   },
+  gasPrice: 100n,
   quote: {
     destinationAmount: 93n,
     fees: [],
@@ -106,6 +107,9 @@ vi.mock("@tanstack/react-query", () => ({
         isError: query.balanceIsError,
         refetch: vi.fn(),
       };
+    }
+    if (queryKey[0] === "direct-squid-destination-gas-price") {
+      return { data: query.gasPrice, isError: false, isFetching: false, isPending: false };
     }
     if (queryKey[0] === "direct-squid-destination-fil") {
       return {
@@ -417,7 +421,8 @@ describe("DirectSquidDepositDialog safety integration", () => {
 
   it.each([
     [0n, false, true],
-    [1n, false, false],
+    [49_000_000_000_000_000n, false, true],
+    [50_000_000_000_000_000n, false, false],
     [0n, true, true],
   ])("defaults the FIL option from destination balance %s (error: %s)", async (balance, isError, checked) => {
     query.recipientFil = balance;
@@ -430,7 +435,7 @@ describe("DirectSquidDepositDialog safety integration", () => {
     const option = renderer.root.findByProps({ id: "direct-squid-fil-gas" });
     expect(option.props.checked).toBe(checked);
     const text = JSON.stringify(renderer.toJSON());
-    expect(text).toContain("Add 0.25 FIL for transaction fees");
+    expect(text).toContain("Add 0.05 FIL for transaction fees");
     expect(text).toContain("Add FIL to your wallet so you can deposit USDFC and make other Filecoin transactions.");
   });
 
@@ -442,7 +447,7 @@ describe("DirectSquidDepositDialog safety integration", () => {
       renderer = create(<DirectSquidDepositDialog accountId='account' onOpenChange={vi.fn()} open />);
     });
 
-    query.recipientFil = 1n;
+    query.recipientFil = 50_000_000_000_000_000n;
     query.recipientFilIsFetching = false;
     await act(async () => {
       renderer.update(<DirectSquidDepositDialog accountId='account' onOpenChange={vi.fn()} open />);
@@ -464,7 +469,7 @@ describe("DirectSquidDepositDialog safety integration", () => {
       { quoteOnly: false },
     );
     const topUpLabel = renderer.root.findAllByType("span").find((node) => node.children.join("") === "Wallet top-up:");
-    expect(topUpLabel?.parent?.children.slice(1).join("")).toContain("0.25 FIL");
+    expect(topUpLabel?.parent?.children.slice(1).join("")).toContain("0.05 FIL");
   });
 
   it("lets the user opt out of the FIL top-up", async () => {

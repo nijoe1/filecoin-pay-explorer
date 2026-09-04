@@ -56,7 +56,8 @@ import {
 import {
   assertExecutableQuoteWithinReview,
   captureReviewedSquidDepositCaps,
-  FIL_GAS_TOP_UP_AMOUNT,
+  estimateFilGasTopUp,
+  FIL_GAS_TOP_UP_FLOOR,
   getDepositNetworkFeeMaximum,
   getDepositRequiredNativeBalance,
   isExecutableQuote,
@@ -252,7 +253,21 @@ export function DirectSquidDepositDialog({
     recipientFilQuery.data,
     recipientFilQuery.isFetching,
     recipientFilQuery.isError,
+    FIL_GAS_TOP_UP_FLOOR,
   );
+  const destinationGasQuery = useQuery({
+    enabled: open && includeFilGas && !!destinationClient,
+    queryFn: () => {
+      if (!destinationClient) throw new Error("Filecoin gas price is unavailable");
+      return destinationClient.getGasPrice();
+    },
+    queryKey: ["direct-squid-destination-gas-price"],
+    refetchInterval: 60_000,
+    retry: 1,
+    staleTime: 30_000,
+  });
+  const filGasTarget = estimateFilGasTopUp(destinationGasQuery.data);
+  const filGasTargetLabel = `${formatUnits(filGasTarget, 18)} FIL`;
   const quoteQuery = useQuery({
     enabled:
       open &&
@@ -276,10 +291,10 @@ export function DirectSquidDepositDialog({
       };
       const quote = await requestSquidDepositRoute(request, squid, { quoteOnly: true });
       if (!includeFilGas) return quote;
-      const filGasTopUp = planFilGasTopUp(quote, Date.now);
+      const filGasTopUp = planFilGasTopUp(quote, Date.now, filGasTarget);
       if (!filGasTopUp) {
         throw new Error(
-          "Squid could not safely add 0.25 FIL for this amount. Increase the amount or turn off the FIL option.",
+          `Squid could not safely add ${filGasTargetLabel} for this amount. Increase the amount or turn off the FIL option.`,
         );
       }
       return requestSquidDepositRoute({ ...request, filGasTopUp }, squid, { quoteOnly: true });
@@ -291,6 +306,7 @@ export function DirectSquidDepositDialog({
       sourceChainId,
       sourceToken?.token,
       parsedAmount?.toString(),
+      filGasTarget.toString(),
       includeFilGas,
     ],
     retry: false,
@@ -754,7 +770,7 @@ export function DirectSquidDepositDialog({
               {reviewed.quote.filGasTopUp ? (
                 <p>
                   <span className='text-muted-foreground'>Wallet top-up:</span> At least{" "}
-                  {formatUnits(FIL_GAS_TOP_UP_AMOUNT, 18)} FIL for transaction fees, using{" "}
+                  {formatUnits(reviewed.quote.filGasTopUp.minimumFil, 18)} FIL for transaction fees, using{" "}
                   {formatUnits(reviewed.quote.filGasTopUp.spendUsdfc, 18)} USDFC
                 </p>
               ) : null}
@@ -890,7 +906,7 @@ export function DirectSquidDepositDialog({
                   type='checkbox'
                 />
                 <div className='grid gap-1'>
-                  <Label htmlFor='direct-squid-fil-gas'>Add 0.25 FIL for transaction fees</Label>
+                  <Label htmlFor='direct-squid-fil-gas'>{`Add ${filGasTargetLabel} for transaction fees`}</Label>
                   <p className='text-xs text-muted-foreground'>
                     Add FIL to your wallet so you can deposit USDFC and make other Filecoin transactions.
                   </p>

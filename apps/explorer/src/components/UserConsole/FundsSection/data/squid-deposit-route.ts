@@ -25,9 +25,17 @@ const FIL_SWAP_ESTIMATED_GAS = "250000000";
 export const SUSHI_V3_SWAP_ROUTER_ADDRESS: Address = "0x0389879e0156033202C44BF784ac18fC02edeE4f";
 export const WFIL_ADDRESS: Address = "0x60E1773636CF5E4A227d9AC24F20fEca034ee25A";
 export const WFIL_USDFC_POOL_FEE = 500;
-export const FIL_GAS_TOP_UP_AMOUNT = 250_000_000_000_000_000n;
+/** The least FIL a top-up sends: enough for many Filecoin transactions at normal fees. */
+export const FIL_GAS_TOP_UP_FLOOR = 50_000_000_000_000_000n;
+// A top-up is sized for this many typical Filecoin Pay transactions at the
+// current base fee, rounded up to a hundredth of a FIL, and never below the floor.
+const FIL_GAS_TOP_UP_TRANSACTIONS = 10n;
+const FIL_GAS_TOP_UP_GAS_UNITS = 60_000_000n;
+const FIL_GAS_TOP_UP_ROUNDING = 10_000_000_000_000_000n;
 const FIL_GAS_TOP_UP_SPEND_HEADROOM_PERCENT = 25n;
-const FIL_GAS_TOP_UP_MAX_SHARE_PERCENT = 10n;
+// Never let the gas top-up eat more than this share of the arriving USDFC, so
+// a small deposit can still fund its wallet without disappearing into FIL.
+const FIL_GAS_TOP_UP_MAX_SHARE_PERCENT = 50n;
 const FIL_GAS_TOP_UP_DEADLINE_SECONDS = 7n * 24n * 60n * 60n;
 
 export const squidDepositAbi = parseAbi([
@@ -118,8 +126,16 @@ export interface SquidDepositRef {
   quoteId: string;
 }
 
+/** FIL worth sending for gas at `gasPrice`: the floor, or more when Filecoin fees are high. */
+export function estimateFilGasTopUp(gasPrice: bigint | undefined): bigint {
+  if (typeof gasPrice !== "bigint" || gasPrice <= 0n) return FIL_GAS_TOP_UP_FLOOR;
+  const estimated = gasPrice * FIL_GAS_TOP_UP_GAS_UNITS * FIL_GAS_TOP_UP_TRANSACTIONS;
+  const rounded = ((estimated + FIL_GAS_TOP_UP_ROUNDING - 1n) / FIL_GAS_TOP_UP_ROUNDING) * FIL_GAS_TOP_UP_ROUNDING;
+  return rounded > FIL_GAS_TOP_UP_FLOOR ? rounded : FIL_GAS_TOP_UP_FLOOR;
+}
+
 function buildFilGasTopUpCalls({ usdfc, recipient }: SquidDepositTarget, topUp: FilGasTopUp) {
-  if (topUp.spendUsdfc <= 0n || topUp.minimumFil !== FIL_GAS_TOP_UP_AMOUNT || topUp.deadline <= 0n) {
+  if (topUp.spendUsdfc <= 0n || topUp.minimumFil < FIL_GAS_TOP_UP_FLOOR || topUp.deadline <= 0n) {
     throw new Error("Invalid FIL gas top-up");
   }
   const swap = encodeFunctionData({
@@ -169,18 +185,25 @@ function buildFilGasTopUpCalls({ usdfc, recipient }: SquidDepositTarget, topUp: 
   ];
 }
 
+/**
+ * How much USDFC to sell for `targetFil` (never below the floor) at the quote's
+ * Filecoin swap rate, or nothing when the quote has no such leg to price it
+ * from or the top-up would take too large a share of the deposit.
+ */
 export function planFilGasTopUp(
   quote: Pick<SquidDepositQuote, "filecoinSwap" | "minimumDestinationAmount">,
   now: () => number,
+  targetFil: bigint = FIL_GAS_TOP_UP_FLOOR,
 ): FilGasTopUp | undefined {
   const swap = quote.filecoinSwap;
   if (!swap || swap.wfil === 0n || swap.usdfc === 0n) return undefined;
-  const usdfcAtQuote = (FIL_GAS_TOP_UP_AMOUNT * swap.usdfc + swap.wfil - 1n) / swap.wfil;
+  const minimumFil = targetFil > FIL_GAS_TOP_UP_FLOOR ? targetFil : FIL_GAS_TOP_UP_FLOOR;
+  const usdfcAtQuote = (minimumFil * swap.usdfc + swap.wfil - 1n) / swap.wfil;
   const spendUsdfc = (usdfcAtQuote * (100n + FIL_GAS_TOP_UP_SPEND_HEADROOM_PERCENT) + 99n) / 100n;
   if (spendUsdfc * 100n > quote.minimumDestinationAmount * FIL_GAS_TOP_UP_MAX_SHARE_PERCENT) return undefined;
   return {
     spendUsdfc,
-    minimumFil: FIL_GAS_TOP_UP_AMOUNT,
+    minimumFil,
     deadline: BigInt(Math.floor(now() / 1000)) + FIL_GAS_TOP_UP_DEADLINE_SECONDS,
   };
 }
