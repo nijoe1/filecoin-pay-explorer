@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -6,6 +7,7 @@ import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { getAccount } from "wagmi/actions";
 import { config } from "@/services/wagmi/config";
 import type { TransactionMetadata } from "@/types";
+import { invalidateAccountQueries } from "@/utils/query-invalidation";
 import { getToastContent } from "@/utils/toast";
 
 interface UseContractTransactionOptions {
@@ -34,6 +36,7 @@ export const useContractTransaction = (options: UseContractTransactionOptions) =
     Map<Hex, { toastId: string | number; metadata: TransactionMetadata }>
   >(new Map());
   const [currentTxHash, setCurrentTxHash] = useState<Hex | undefined>();
+  const queryClient = useQueryClient();
 
   const { writeContractAsync, isPending: isWritePending } = useWriteContract();
 
@@ -75,6 +78,8 @@ export const useContractTransaction = (options: UseContractTransactionOptions) =
           : undefined,
       });
 
+      // Every write here moves the account's balances, approvals or rails.
+      void invalidateAccountQueries(queryClient, account ?? receipt.from);
       onSuccess?.(receipt);
 
       setTimeout(() => {
@@ -122,7 +127,19 @@ export const useContractTransaction = (options: UseContractTransactionOptions) =
         setCurrentTxHash(undefined);
       }, 7000);
     }
-  }, [currentTxHash, isSuccess, isError, receipt, error, transactions, explorerUrl, onSuccess, onError]);
+  }, [
+    account,
+    currentTxHash,
+    isSuccess,
+    isError,
+    receipt,
+    error,
+    transactions,
+    explorerUrl,
+    onSuccess,
+    onError,
+    queryClient,
+  ]);
 
   const execute = async ({
     functionName,

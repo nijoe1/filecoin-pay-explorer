@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), loading: vi.fn() } }));
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: vi.fn(async () => undefined) }),
+}));
 vi.mock("wagmi", () => ({
   useWaitForTransactionReceipt: () => ({ isSuccess: false, isError: false }),
   useWriteContract: () => ({ writeContractAsync: mocks.writeContractAsync, isPending: false }),
