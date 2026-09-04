@@ -7,6 +7,8 @@ import { useEffect, useId, useState } from "react";
 export type SearchableOption = {
   aliases?: readonly string[];
   detail?: string;
+  /** Listed for information only; it cannot be chosen. */
+  disabled?: boolean;
   label: string;
   secondaryLabel?: string;
   value: string;
@@ -22,7 +24,8 @@ export function filterSearchableOptions(options: readonly SearchableOption[], qu
   );
 }
 
-export function resolveSearchableOption(options: readonly SearchableOption[], query: string) {
+export function resolveSearchableOption(allOptions: readonly SearchableOption[], query: string) {
+  const options = allOptions.filter((option) => !option.disabled);
   const normalizedQuery = query.trim().toLowerCase();
   const labelMatches = options.filter((option) => option.label.toLowerCase() === normalizedQuery);
   if (labelMatches.length === 1) return labelMatches[0].value;
@@ -78,6 +81,7 @@ export function SearchableSelect({
     setIsOpen(true);
   };
   const select = (option: SearchableOption) => {
+    if (option.disabled) return;
     setQuery(option.label);
     setIsTouched(false);
     setIsOpen(false);
@@ -147,10 +151,16 @@ export function SearchableSelect({
           ) : (
             filteredOptions.map((option, index) => (
               <button
+                aria-disabled={option.disabled || undefined}
                 aria-selected={option.value.toLowerCase() === value.toLowerCase()}
                 className={`w-full rounded-sm px-3 py-2 text-left text-sm ${
-                  index === activeIndex ? "bg-accent" : "hover:bg-accent"
+                  option.disabled
+                    ? "cursor-not-allowed text-muted-foreground opacity-60"
+                    : index === activeIndex
+                      ? "bg-accent"
+                      : "hover:bg-accent"
                 }`}
+                disabled={option.disabled}
                 id={`${listId}-${index}`}
                 key={option.value}
                 onClick={() => select(option)}

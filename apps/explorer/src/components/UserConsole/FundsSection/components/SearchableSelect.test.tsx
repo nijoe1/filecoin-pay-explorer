@@ -102,6 +102,34 @@ describe("SearchableSelect", () => {
     expect(renderer.root.findByType("output").children).toEqual(["0x123"]);
   });
 
+  it("lists a disabled option without letting it be chosen", async () => {
+    const onValueChange = vi.fn();
+    const greyed = [{ ...options[0], disabled: true }, options[1]];
+    expect(resolveSearchableOption(greyed, "USDC")).toBe("");
+
+    let renderer!: ReturnType<typeof create>;
+    await act(async () => {
+      renderer = create(
+        <SearchableSelect
+          id='token'
+          invalidMessage='Choose a token.'
+          onValueChange={onValueChange}
+          options={greyed}
+          placeholder='Search tokens'
+          value=''
+        />,
+      );
+    });
+    await act(async () => renderer.root.findByType("input").props.onClick());
+    const [usdc, eth] = renderer.root.findAllByProps({ role: "option" });
+    expect(usdc.props.disabled).toBe(true);
+    expect(eth.props.disabled).toBeUndefined();
+    await act(async () => usdc.props.onClick());
+    expect(onValueChange).not.toHaveBeenCalled();
+    await act(async () => eth.props.onClick());
+    expect(onValueChange).toHaveBeenCalledWith("0xeee");
+  });
+
   it("reports unmatched free text and keeps portalled wheel events local", async () => {
     let renderer!: ReturnType<typeof create>;
     await act(async () => {

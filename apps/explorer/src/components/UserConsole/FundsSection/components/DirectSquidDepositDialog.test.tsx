@@ -40,6 +40,10 @@ const query = vi.hoisted(() => ({
     spendUsdfc: 125_000_000_000_000_000n,
   },
   gasPrice: 100n,
+  inventory: {
+    "0x4444444444444444444444444444444444444444": 200_000_000n,
+    "0x5555555555555555555555555555555555555555": 300_000_000n,
+  } as Record<string, bigint | null>,
   quote: {
     destinationAmount: 93n,
     fees: [],
@@ -99,7 +103,7 @@ vi.mock("@tanstack/react-query", () => ({
       return { data: query.tokens, isError: false, isPending: false, refetch: vi.fn() };
     }
     if (queryKey[0] === "squid" && queryKey[1] === "source-token-balances") {
-      return { data: { [USDC.toLowerCase()]: 200_000_000n, [USDT.toLowerCase()]: 300_000_000n }, isPending: false };
+      return { data: query.inventory, isError: false, isPending: false };
     }
     if (queryKey[0] === "direct-squid-deposit-balances") {
       return {
@@ -168,12 +172,12 @@ vi.mock("./SearchableSelect", () => ({
     value,
   }: {
     onValueChange: (value: string) => void;
-    options: { label: string; value: string }[];
+    options: { disabled?: boolean; label: string; value: string }[];
     value: string;
   }) => (
     <select aria-label='Source token' onChange={(event) => onValueChange(event.target.value)} value={value}>
       {options.map((option) => (
-        <option key={option.value} value={option.value}>
+        <option disabled={option.disabled} key={option.value} value={option.value}>
           {option.label}
         </option>
       ))}
@@ -226,6 +230,7 @@ describe("DirectSquidDepositDialog safety integration", () => {
     state.requestRoute.mockReset().mockResolvedValue(query.quote);
     query.allowance = 100_000_000n;
     query.balanceIsError = false;
+    query.inventory = { [USDC.toLowerCase()]: 200_000_000n, [USDT.toLowerCase()]: 300_000_000n };
     query.nativeBalance = 10n ** 18n;
     query.recipientFil = 0n;
     query.recipientFilIsError = false;
@@ -365,6 +370,31 @@ describe("DirectSquidDepositDialog safety integration", () => {
 
     expect(JSON.stringify(renderer.toJSON())).toContain("Your wallet may have submitted this route");
     expect(button(renderer, "Pay 100 USDC")).toBeUndefined();
+  });
+
+  it("lists only the funded tokens and greys the catalog out when the wallet holds none", async () => {
+    query.inventory = { [USDC.toLowerCase()]: 0n, [USDT.toLowerCase()]: 300_000_000n };
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<DirectSquidDepositDialog accountId='account' onOpenChange={vi.fn()} open />);
+    });
+    const tokenSelect = () => renderer.root.findByProps({ "aria-label": "Source token" });
+    expect(
+      tokenSelect()
+        .findAllByType("option")
+        .map((option) => option.props.value),
+    ).toEqual([USDT]);
+    expect(tokenSelect().props.value).toBe(USDT);
+
+    query.inventory = { [USDC.toLowerCase()]: 0n, [USDT.toLowerCase()]: 0n };
+    await act(async () => {
+      renderer.update(<DirectSquidDepositDialog accountId='account' onOpenChange={vi.fn()} open />);
+    });
+    const options = tokenSelect().findAllByType("option");
+    expect(options.map((option) => option.props.value)).toEqual([USDC, USDT]);
+    expect(options.every((option) => option.props.disabled)).toBe(true);
+    expect(tokenSelect().props.value).toBe("");
+    expect(JSON.stringify(renderer.toJSON())).toContain("This wallet holds none of these tokens");
   });
 
   it("uses the explicitly selected token as the reviewed and executed source", async () => {

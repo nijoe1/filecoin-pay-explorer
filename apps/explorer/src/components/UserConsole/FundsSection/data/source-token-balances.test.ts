@@ -1,9 +1,9 @@
 import { NATIVE_TOKEN_ADDRESS, type SourceToken } from "@filecoin-project/squid-evm-funding";
 import { describe, expect, it, vi } from "vitest";
 import {
-  orderSourceTokensByBalance,
   readSourceTokenBalance,
   readSourceTokenBalances,
+  selectSourceTokens,
   sourceTokenBalance,
   sourceTokenBalancesQueryKey,
 } from "./source-token-balances";
@@ -48,22 +48,36 @@ describe("source token balances", () => {
     expect(sourceTokenBalance(balances, native.token)).toBe(500n);
   });
 
-  it("orders funded before zero before unknown, with USDC first inside a group and stable remaining ties", () => {
+  it("lists only funded tokens, USDC first and then by balance across decimals", () => {
     const [dai, usdc, weth, usdt, wbtc] = [
       token(1, "DAI"),
       token(2, "USDC"),
       token(3, "WETH"),
-      token(4, "USDT"),
+      { ...token(4, "USDT"), decimals: 6 },
       token(5, "WBTC"),
     ];
-    const balances = { [dai.token]: 4n, [usdc.token]: 2n, [weth.token]: 0n, [usdt.token]: null };
-    expect(orderSourceTokensByBalance([dai, usdc, weth, usdt, wbtc], balances).map(({ symbol }) => symbol)).toEqual([
-      "USDC",
-      "DAI",
-      "WETH",
-      "USDT",
-      "WBTC",
-    ]);
+    const balances = { [dai.token]: 4n * 10n ** 18n, [usdc.token]: 2n, [weth.token]: 0n, [usdt.token]: 5_000_000n };
+    expect(selectSourceTokens([dai, usdc, weth, usdt, wbtc], balances)).toEqual({
+      disabled: false,
+      tokens: [usdc, usdt, dai],
+    });
+  });
+
+  it("greys out the catalog when the wallet holds nothing, but keeps it usable while balances are unknown", () => {
+    const [usdc, eth] = [token(1, "USDC"), token(2, "ETH")];
+    expect(selectSourceTokens([eth, usdc], undefined)).toEqual({ disabled: false, tokens: [usdc, eth] });
+    expect(selectSourceTokens([eth, usdc], { [eth.token]: 0n, [usdc.token]: 0n })).toEqual({
+      disabled: true,
+      tokens: [usdc, eth],
+    });
+    expect(selectSourceTokens([eth, usdc], { [eth.token]: 0n, [usdc.token]: null })).toEqual({
+      disabled: true,
+      tokens: [usdc, eth],
+    });
+    expect(selectSourceTokens([eth, usdc], { [eth.token]: null, [usdc.token]: null })).toEqual({
+      disabled: false,
+      tokens: [usdc, eth],
+    });
   });
 
   it("keys a scan by owner, chain, and address-stable catalog identity", () => {

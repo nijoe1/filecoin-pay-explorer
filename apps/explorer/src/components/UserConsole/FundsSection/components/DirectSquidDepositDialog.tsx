@@ -39,9 +39,9 @@ import { useTopUpActivity } from "../../TopUpActivityContext";
 import { filecoinGasBalanceStatus } from "../data/filecoin-gas-balance";
 import { invalidateTopUpQueries } from "../data/guided-top-up";
 import {
-  orderSourceTokensByBalance,
   readSourceTokenBalance,
   readSourceTokenBalances,
+  selectSourceTokens,
   sourceTokenBalance,
   sourceTokenBalancesQueryKey,
   sourceTokenCatalogIdentity,
@@ -140,7 +140,6 @@ export function DirectSquidDepositDialog({
   const [error, setError] = useState<string | null>(null);
   const submitting = useRef(false);
   const mounted = useRef(true);
-  const initializedSelectionScope = useRef("");
   const initializedFilGasScope = useRef("");
   const switchedToSource = useRef(false);
   const latestContext = useRef<{
@@ -188,10 +187,9 @@ export function DirectSquidDepositDialog({
     retry: 1,
   });
   const inventoryBalances = inventoryBalancesQuery.isError ? undefined : inventoryBalancesQuery.data;
-  const orderedTokens = useMemo(
-    () => orderSourceTokensByBalance(tokens, inventoryBalances ?? {}),
-    [inventoryBalances, tokens],
-  );
+  const selection = useMemo(() => selectSourceTokens(tokens, inventoryBalances), [inventoryBalances, tokens]);
+  const selectableTokens = selection.disabled ? [] : selection.tokens;
+  const holdsNothingOnChain = selection.disabled && tokens.length > 0;
   const sourceToken = tokens.find((token) => token.token.toLowerCase() === sourceTokenAddress.toLowerCase());
   const sourceIsNative = sourceToken ? isNativeToken(sourceToken.token) : false;
   const duplicateSymbols = useMemo(() => {
@@ -202,18 +200,19 @@ export function DirectSquidDepositDialog({
   }, [tokens]);
   const tokenOptions = useMemo<readonly SearchableOption[]>(
     () =>
-      orderedTokens.map((token) => {
+      selection.tokens.map((token) => {
         const balance = sourceTokenBalance(inventoryBalances, token.token);
         const duplicate = (duplicateSymbols.get(token.symbol.toLowerCase()) ?? 0) > 1;
         return {
           aliases: [token.symbol, token.token],
           detail: balance == null ? "Balance unavailable" : `${formatUnits(balance, token.decimals)} ${token.symbol}`,
+          disabled: selection.disabled || undefined,
           label: duplicate ? `${token.symbol} (${formatAddress(token.token)})` : token.symbol,
           secondaryLabel: duplicate ? undefined : formatAddress(token.token),
           value: token.token,
         };
       }),
-    [duplicateSymbols, inventoryBalances, orderedTokens],
+    [duplicateSymbols, inventoryBalances, selection],
   );
   const parsedAmount = (() => {
     if (!sourceToken || amount.trim() === "") return null;
@@ -361,27 +360,25 @@ export function DirectSquidDepositDialog({
     setSourceChainId(initialSourceChainId);
     setSourceTokenAddress(initialSourceToken);
     setAmount(formatUnits(initialSourceAmount, initialSourceDecimals));
-    initializedSelectionScope.current = "";
   }, [initialSourceAmount, initialSourceChainId, initialSourceDecimals, initialSourceToken, open, pending]);
 
+  // The picker only offers funded tokens, so a pick that is no longer offered
+  // (nothing funded, or the wallet or network changed) gives way to the best one.
   useEffect(() => {
     if (!open || !owner || pending || tokens.length === 0 || inventoryBalancesQuery.isPending) return;
-    const scope = `${owner}:${sourceChainId}:${sourceTokenCatalogIdentity(tokens)}`;
-    if (initializedSelectionScope.current === scope) return;
-    initializedSelectionScope.current = scope;
     const isPurchasedSource =
       initialSourceChainId === sourceChainId && initialSourceToken?.toLowerCase() === sourceTokenAddress.toLowerCase();
-    if (!isPurchasedSource && !tokens.some((token) => token.token.toLowerCase() === sourceTokenAddress.toLowerCase())) {
-      setSourceTokenAddress(orderedTokens[0]?.token ?? "");
-    }
+    if (isPurchasedSource) return;
+    if (selectableTokens.some((token) => token.token.toLowerCase() === sourceTokenAddress.toLowerCase())) return;
+    setSourceTokenAddress(selectableTokens[0]?.token ?? "");
   }, [
     inventoryBalancesQuery.isPending,
     initialSourceChainId,
     initialSourceToken,
     open,
-    orderedTokens,
     owner,
     pending,
+    selectableTokens,
     sourceChainId,
     sourceTokenAddress,
     tokens,
@@ -859,7 +856,6 @@ export function DirectSquidDepositDialog({
                   onChange={(event) => {
                     setSourceChainId(Number(event.target.value));
                     setSourceTokenAddress("");
-                    initializedSelectionScope.current = "";
                     setReviewed(null);
                   }}
                 >
@@ -894,6 +890,12 @@ export function DirectSquidDepositDialog({
                 ) : null}
                 {!tokensQuery.isPending && !tokensQuery.isError && tokens.length === 0 ? (
                   <p className='text-sm text-muted-foreground'>No supported tokens are available on this network.</p>
+                ) : null}
+                {holdsNothingOnChain && !initialSource ? (
+                  <p className='text-sm text-muted-foreground' role='status'>
+                    This wallet holds none of these tokens on {sourceChain?.name ?? "this network"}. Choose another
+                    network or wallet.
+                  </p>
                 ) : null}
                 {initialSource && !tokensQuery.isPending && !tokensQuery.isError && !sourceToken ? (
                   <p className='text-sm text-destructive' role='alert'>

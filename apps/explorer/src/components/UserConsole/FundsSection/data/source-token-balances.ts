@@ -69,17 +69,50 @@ export async function readSourceTokenBalances(
   return balances;
 }
 
-/** Funded, then zero, then unknown. Plain USDC leads within each group; other ties keep catalog order. */
-export function orderSourceTokensByBalance(tokens: readonly SourceToken[], balances: SourceTokenBalances) {
-  const rank = (token: SourceToken) => {
-    const balance = balances[key(token.token)];
-    return balance == null ? 0 : balance === 0n ? 1 : 2;
-  };
-  return [...tokens].sort((left, right) => {
-    const byBalance = rank(right) - rank(left);
-    if (byBalance !== 0) return byBalance;
-    return Number(right.symbol.toUpperCase() === "USDC") - Number(left.symbol.toUpperCase() === "USDC");
-  });
+const COMMON_DECIMALS = 18n;
+const isUsdc = (token: SourceToken) => token.symbol.toUpperCase() === "USDC";
+/** Balances scaled to a common precision, so tokens with 6 and 18 decimals compare. */
+const normalized = (balance: bigint, decimals: number) =>
+  decimals <= 18
+    ? balance * 10n ** (COMMON_DECIMALS - BigInt(decimals))
+    : balance / 10n ** (BigInt(decimals) - COMMON_DECIMALS);
+
+/** Plain USDC first, then catalog order. */
+function usdcFirst(tokens: readonly SourceToken[]) {
+  return [...tokens].sort((left, right) => Number(isUsdc(right)) - Number(isUsdc(left)));
+}
+
+export type SourceTokenSelection = {
+  /** What the picker lists: the funded tokens, or the whole catalog when nothing is funded. */
+  tokens: SourceToken[];
+  /** True when the catalog is shown only to say what would be accepted; none of it can be paid with. */
+  disabled: boolean;
+};
+
+/**
+ * Only the tokens the wallet holds, USDC first and then largest balance first.
+ * Until the balances are known the whole catalog is offered; once they are
+ * known and nothing is funded, the catalog stays visible but greyed out.
+ */
+export function selectSourceTokens(
+  tokens: readonly SourceToken[],
+  balances: SourceTokenBalances | undefined,
+): SourceTokenSelection {
+  const catalog = usdcFirst(tokens);
+  if (balances === undefined) return { tokens: catalog, disabled: false };
+  const funded = catalog
+    .filter((token) => (balances[key(token.token)] ?? 0n) > 0n)
+    .sort((left, right) => {
+      const byUsdc = Number(isUsdc(right)) - Number(isUsdc(left));
+      if (byUsdc !== 0) return byUsdc;
+      const leftBalance = normalized(balances[key(left.token)] ?? 0n, left.decimals);
+      const rightBalance = normalized(balances[key(right.token)] ?? 0n, right.decimals);
+      return rightBalance > leftBalance ? 1 : rightBalance < leftBalance ? -1 : 0;
+    });
+  if (funded.length > 0) return { tokens: funded, disabled: false };
+  // Every read failed: the wallet may well hold something, so leave the catalog usable.
+  const unknown = tokens.every((token) => balances[key(token.token)] == null);
+  return { tokens: catalog, disabled: !unknown };
 }
 
 export function sourceTokenBalance(balances: SourceTokenBalances | undefined, token: string) {
