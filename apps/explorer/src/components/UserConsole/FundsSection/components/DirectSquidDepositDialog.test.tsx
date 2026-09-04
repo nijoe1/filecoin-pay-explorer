@@ -518,6 +518,19 @@ describe("DirectSquidDepositDialog safety integration", () => {
     });
   });
 
+  it("returns the paying wallet to Filecoin after a failed or cancelled route", async () => {
+    state.execute.mockRejectedValueOnce(Object.assign(new Error("User rejected the request."), { code: 4001 }));
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<DirectSquidDepositDialog accountId='account' onOpenChange={vi.fn()} open />);
+    });
+    await reachExecution(renderer);
+    await vi.waitFor(() => expect(wallet.switchChain).toHaveBeenLastCalledWith(314));
+
+    expect(wallet.switchChain.mock.calls).toEqual([[8453], [314]]);
+    expect(JSON.stringify(renderer.toJSON())).toContain("Transaction cancelled in your wallet.");
+  });
+
   it("keeps NEEDS_GAS recoverable with the route link", async () => {
     state.execute.mockImplementationOnce(async (input: ExecuteSquidDepositInput) => {
       input.onSwapAttempt?.(5n);

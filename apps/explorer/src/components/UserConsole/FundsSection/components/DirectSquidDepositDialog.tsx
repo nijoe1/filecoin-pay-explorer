@@ -476,6 +476,17 @@ export function DirectSquidDepositDialog({
     }
   };
 
+  /** After a failed route the wallet goes back on its own; the close guard repeats the ask if this fails. */
+  const returnToFilecoin = async () => {
+    if (!switchedToSource.current || !payingWallet) return;
+    try {
+      await payingWallet.switchChain(mainnet.id);
+      switchedToSource.current = false;
+    } catch {
+      // The failure message on screen matters more than a second one about the network.
+    }
+  };
+
   const close = async () => {
     if (submitting.current || !(await restoreFilecoin())) return;
     onOpenChange(false);
@@ -505,6 +516,7 @@ export function DirectSquidDepositDialog({
       if (owner && isUserRejectedRequest(failure)) clearSaved(owner);
       setError(walletErrorMessage(failure, "The Squid deposit could not be completed."));
     }
+    void returnToFilecoin();
   };
 
   const resume = async () => {
