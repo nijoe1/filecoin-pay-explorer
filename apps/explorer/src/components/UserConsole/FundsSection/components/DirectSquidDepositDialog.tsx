@@ -17,6 +17,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useDebounce } from "use-debounce";
 import {
   type Address,
   createWalletClient,
@@ -30,6 +31,7 @@ import {
 import { estimateTotalFee } from "viem/op-stack";
 import { useAccount, usePublicClient } from "wagmi";
 import { getAccount } from "wagmi/actions";
+import { isPrivyEmbeddedWallet } from "@/components/UserConsole/console-wallet";
 import { mainnet, SQUID_SOURCE_CHAINS } from "@/constants/chains";
 import { config } from "@/services/wagmi/config";
 import { formatAddress } from "@/utils/formatter";
@@ -67,6 +69,7 @@ import {
   type SquidDepositQuote,
   type SquidDepositRouteRequest,
 } from "../data/squid-deposit-route";
+import type { SquidDepositUiStage } from "../data/squid-deposit-stages";
 import {
   assertSquidDepositContext,
   claimSquidDepositSubmission,
@@ -85,8 +88,12 @@ import { isOpStackChain, isUserRejectedRequest, walletErrorMessage } from "../da
 import { paymentTokensQueryOptions } from "../data/squid-payment-tokens";
 import { squidFetch } from "../data/squid-quote";
 import { type SearchableOption, SearchableSelect } from "./SearchableSelect";
+import { SquidDepositProgress } from "./SquidDepositProgress";
 
 const DEFAULT_SOURCE_CHAIN = 8453;
+// Squid is asked once the amount has stopped changing, not on every keystroke.
+const QUOTE_DEBOUNCE_MS = 500;
+const QUOTE_STALE_MS = 20_000;
 const DEPOSIT_TARGET = {
   payments: mainnet.contracts.payments.address,
   usdfc: mainnet.contracts.usdfc.address,
@@ -125,7 +132,9 @@ export function DirectSquidDepositDialog({
   const [amount, setAmount] = useState("");
   const [includeFilGas, setIncludeFilGas] = useState(true);
   const [reviewed, setReviewed] = useState<ReviewedDeposit | null>(null);
-  const [stage, setStage] = useState<SquidDepositStage | "preparing" | null>(null);
+  const [stage, setStage] = useState<SquidDepositUiStage | null>(null);
+  // Whether this run signed a token approval, so the swap signature reads as step 2 of 2.
+  const [hasApproved, setHasApproved] = useState(false);
   const [transactionHash, setTransactionHash] = useState<Hash | null>(null);
   const [pending, setPending] = useState<PendingSquidDeposit | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -215,6 +224,8 @@ export function DirectSquidDepositDialog({
       return null;
     }
   })();
+  const [quoteAmount] = useDebounce(parsedAmount, QUOTE_DEBOUNCE_MS);
+  const isAmountSettled = quoteAmount === parsedAmount;
   const balancesQuery = useQuery({
     enabled: open && !!payingWallet && !!sourceToken && !!sourceClient,
     queryFn: async () => {
@@ -268,6 +279,9 @@ export function DirectSquidDepositDialog({
   });
   const filGasTarget = estimateFilGasTopUp(destinationGasQuery.data);
   const filGasTargetLabel = `${formatUnits(filGasTarget, 18)} FIL`;
+  // The first destination read decides the FIL default; later background
+  // refreshes must not pause and restart the quote.
+  const hasRecipientFil = recipientFilQuery.data !== undefined || recipientFilQuery.isError;
   const quoteQuery = useQuery({
     enabled:
       open &&
@@ -275,17 +289,18 @@ export function DirectSquidDepositDialog({
       !!recipient &&
       !!payingWallet &&
       !!sourceToken &&
-      parsedAmount !== null &&
-      !recipientFilQuery.isFetching &&
+      quoteAmount !== null &&
+      isAmountSettled &&
+      hasRecipientFil &&
       !balancesQuery.isError &&
-      (balancesQuery.data?.token ?? 0n) >= parsedAmount,
+      (balancesQuery.data?.token ?? 0n) >= quoteAmount,
     queryFn: async () => {
-      if (!recipient || !payingWallet || !sourceToken || parsedAmount === null) throw new Error("Quote unavailable");
+      if (!recipient || !payingWallet || !sourceToken || quoteAmount === null) throw new Error("Quote unavailable");
       const request = {
         ...DEPOSIT_TARGET,
         owner: getAddress(payingWallet.address),
         recipient,
-        sourceAmount: parsedAmount,
+        sourceAmount: quoteAmount,
         sourceChainId,
         sourceToken: sourceToken.token,
       };
@@ -305,11 +320,12 @@ export function DirectSquidDepositDialog({
       payingWallet?.address,
       sourceChainId,
       sourceToken?.token,
-      parsedAmount?.toString(),
+      quoteAmount?.toString(),
       filGasTarget.toString(),
       includeFilGas,
     ],
     retry: false,
+    staleTime: QUOTE_STALE_MS,
   });
 
   latestContext.current = {
@@ -465,6 +481,12 @@ export function DirectSquidDepositDialog({
     onOpenChange(false);
   };
 
+  const setStageWithHash = (next: SquidDepositStage, hash?: Hash) => {
+    if (next === "approving") setHasApproved(true);
+    setStage(next);
+    if (hash) setTransactionHash(hash);
+  };
+
   const finish = async (owner: Address, depositRecipient: Address, depositedAmount: bigint) => {
     clearSaved(owner);
     setStage(null);
@@ -506,10 +528,7 @@ export function DirectSquidDepositDialog({
           destinationClient: destinationClient as SquidDepositDestinationClient,
           fundsBefore: pending.fundsBefore,
           minimumDestinationAmount: pending.minimumDestinationAmount,
-          onStage: (next, hash) => {
-            setStage(next);
-            if (hash) setTransactionHash(hash);
-          },
+          onStage: setStageWithHash,
           quoteId: pending.quoteId,
           sourceChainId: pending.sourceChainId,
           squid,
@@ -546,6 +565,7 @@ export function DirectSquidDepositDialog({
           throw new Error("A Squid deposit from this wallet is already pending.");
         }
         assertContext(snapshot);
+        setHasApproved(false);
         setStage("preparing");
         await payingWallet.switchChain(snapshot.sourceChainId);
         switchedToSource.current = snapshot.sourceChainId !== mainnet.id;
@@ -615,10 +635,7 @@ export function DirectSquidDepositDialog({
             });
             setTransactionHash(hash);
           },
-          onStage: (next, hash) => {
-            setStage(next);
-            if (hash) setTransactionHash(hash);
-          },
+          onStage: setStageWithHash,
           quote: executable,
           request,
           sourceClient: executionSourceClient as SquidDepositSourceClient,
@@ -646,16 +663,19 @@ export function DirectSquidDepositDialog({
   const canReview =
     !!quote &&
     parsedAmount !== null &&
+    quote.sourceAmount === parsedAmount &&
     !balancesQuery.isError &&
     !!balancesQuery.data &&
     balancesQuery.data.token >= parsedAmount &&
     requiredNative !== null &&
     balancesQuery.data.native >= requiredNative;
   const busy = stage !== null;
+  const isQuoting = parsedAmount !== null && !reviewed && (!isAmountSettled || (quoteQuery.isFetching && !quote));
   const explorerUrl = sourceChain?.blockExplorers?.default.url;
   const reviewedSourceChain = reviewed
     ? SQUID_SOURCE_CHAINS.find((chain) => chain.id === reviewed.context.sourceChainId)
     : undefined;
+  const progressSymbol = reviewed?.sourceSymbol ?? pending?.sourceSymbol ?? sourceToken?.symbol ?? "token";
 
   return (
     <Dialog
@@ -678,14 +698,21 @@ export function DirectSquidDepositDialog({
         </DialogHeader>
 
         <div className='grid gap-4 text-sm'>
-          {pending ? (
+          {stage ? (
+            <SquidDepositProgress
+              explorerUrl={explorerUrl}
+              hasApproved={hasApproved}
+              isEmbedded={payingWallet ? isPrivyEmbeddedWallet(payingWallet) : false}
+              stage={stage}
+              symbol={progressSymbol}
+              transactionHash={transactionHash}
+            />
+          ) : pending ? (
             <section className='grid gap-3 rounded-md border p-3' aria-label='Pending Squid deposit'>
               <p>
-                {stage
-                  ? `Deposit status: ${stage}`
-                  : pending.transactionHash
-                    ? "A Squid deposit is still in progress."
-                    : "Your wallet may have submitted this route. Check its activity before trying again."}
+                {pending.transactionHash
+                  ? "A Squid deposit is still in progress."
+                  : "Your wallet may have submitted this route. Check its activity before trying again."}
               </p>
               {pending.transactionHash ? (
                 <div className='flex flex-wrap gap-3'>
@@ -917,12 +944,12 @@ export function DirectSquidDepositDialog({
                   ) : null}
                 </div>
               </div>
-              {quoteQuery.isFetching ? (
+              {isQuoting ? (
                 <p className='inline-flex items-center gap-2 text-muted-foreground'>
                   <Loader2 className='h-4 w-4 animate-spin' /> Fetching a quote…
                 </p>
               ) : null}
-              {quoteQuery.error ? (
+              {quoteQuery.error && isAmountSettled ? (
                 <p className='text-destructive'>
                   {walletErrorMessage(quoteQuery.error, "Squid could not quote this amount.")}
                 </p>
@@ -945,7 +972,7 @@ export function DirectSquidDepositDialog({
               ) : null}
             </>
           )}
-          {transactionHash && !pending ? <code className='break-all text-xs'>{transactionHash}</code> : null}
+          {transactionHash && !pending && !stage ? <code className='break-all text-xs'>{transactionHash}</code> : null}
           {error ? (
             <p className='text-destructive' role='alert'>
               {error}

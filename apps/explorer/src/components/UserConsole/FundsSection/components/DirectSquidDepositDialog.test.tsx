@@ -489,6 +489,35 @@ describe("DirectSquidDepositDialog safety integration", () => {
     );
   });
 
+  it("shows the running deposit as a timeline instead of a raw stage name", async () => {
+    let finishExecution!: () => void;
+    const paused = new Promise<void>((resolve) => {
+      finishExecution = resolve;
+    });
+    state.execute.mockImplementationOnce(async (input: ExecuteSquidDepositInput) => {
+      input.onStage?.("approving");
+      input.onStage?.("swap-requested");
+      await paused;
+      return { depositedAmount: 92n, fundsAfter: 97n, fundsBefore: 5n, transactionHash: ROUTE_HASH };
+    });
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<DirectSquidDepositDialog accountId='account' onOpenChange={vi.fn()} open />);
+    });
+    await reachExecution(renderer);
+
+    const text = JSON.stringify(renderer.toJSON());
+    expect(text).toContain("Step 2 of 2: confirm the swap in your wallet");
+    expect(text).toContain("Approve USDC");
+    expect(text).not.toContain("Deposit status:");
+    expect(text).not.toContain("swap-requested");
+
+    await act(async () => {
+      finishExecution();
+      await vi.waitFor(() => expect(wallet.switchChain).toHaveBeenLastCalledWith(314));
+    });
+  });
+
   it("keeps NEEDS_GAS recoverable with the route link", async () => {
     state.execute.mockImplementationOnce(async (input: ExecuteSquidDepositInput) => {
       input.onSwapAttempt?.(5n);
