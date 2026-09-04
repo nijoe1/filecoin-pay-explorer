@@ -22,7 +22,6 @@ export function FundingHost() {
 function FundingDialogs({ address, chainId }: { address: string; chainId: number | undefined }) {
   const launch = useFundingLaunch();
   const [isDepositOpen, setDepositOpen] = useState(false);
-  const [isSquidOpen, setSquidOpen] = useState(false);
   const [cardSourceAmount, setCardSourceAmount] = useState<bigint>();
   const isMainnet = chainId === undefined || chainId === mainnet.id;
   const isCalibration = chainId === calibration.id;
@@ -38,8 +37,7 @@ function FundingDialogs({ address, chainId }: { address: string; chainId: number
     contextKey: `${address}:${chainId ?? "unknown"}`,
     onPurchased: (amount) => {
       setCardSourceAmount(amount);
-      launch.closeAddFunds();
-      setSquidOpen(true);
+      launch.openSquid();
     },
   });
 
@@ -47,7 +45,8 @@ function FundingDialogs({ address, chainId }: { address: string; chainId: number
     previousChainId.current = chainId;
     setDepositOpen(false);
     launch.closeAddFunds();
-  }, [chainId, launch.closeAddFunds]);
+    launch.closeSquid();
+  }, [chainId, launch.closeAddFunds, launch.closeSquid]);
 
   const handleDepositOpenChange = (open: boolean) => {
     setDepositOpen(open);
@@ -63,7 +62,7 @@ function FundingDialogs({ address, chainId }: { address: string; chainId: number
             return;
           }
           launch.closeAddFunds();
-          if (method === "squid") setSquidOpen(true);
+          if (method === "squid") launch.openSquid();
           else setDepositOpen(true);
         };
 
@@ -97,10 +96,13 @@ function FundingDialogs({ address, chainId }: { address: string; chainId: number
                   : undefined
               }
               onOpenChange={(open) => {
-                setSquidOpen(open);
-                if (!open) setCardSourceAmount(undefined);
+                if (open) launch.openSquid();
+                else {
+                  launch.closeSquid();
+                  setCardSourceAmount(undefined);
+                }
               }}
-              open={isSquidOpen}
+              open={!chainChanged && launch.isSquidOpen}
             />
           </>
         );
