@@ -678,6 +678,15 @@ export function DirectSquidDepositDialog({
     balancesQuery.data.token >= parsedAmount &&
     requiredNative !== null &&
     balancesQuery.data.native >= requiredNative;
+  // What Max may fill in: the whole balance, less the gas a native payment must keep back
+  // once a quote has priced it.
+  const spendable = (() => {
+    if (!sourceToken || balancesQuery.isError || !balancesQuery.data) return undefined;
+    const balance = balancesQuery.data.token;
+    if (!sourceIsNative) return balance;
+    const reserve = quote && requiredNative !== null ? requiredNative - quote.sourceAmount : 0n;
+    return balance > reserve ? balance - reserve : 0n;
+  })();
   const busy = stage !== null;
   const isQuoting = parsedAmount !== null && !reviewed && (!isAmountSettled || (quoteQuery.isFetching && !quote));
   const explorerUrl = sourceChain?.blockExplorers?.default.url;
@@ -904,7 +913,24 @@ export function DirectSquidDepositDialog({
                 ) : null}
               </div>
               <div className='grid gap-1'>
-                <Label htmlFor='direct-squid-amount'>Amount ({sourceToken?.symbol ?? "source token"})</Label>
+                <div className='flex items-center justify-between gap-2'>
+                  <Label htmlFor='direct-squid-amount'>Amount ({sourceToken?.symbol ?? "source token"})</Label>
+                  {sourceToken && spendable !== undefined ? (
+                    <Button
+                      aria-label={`Use the full ${sourceToken.symbol} balance`}
+                      disabled={busy || spendable === 0n}
+                      onClick={() => {
+                        setAmount(formatUnits(spendable, sourceToken.decimals));
+                        setReviewed(null);
+                      }}
+                      size='compact'
+                      type='button'
+                      variant='ghost'
+                    >
+                      Max
+                    </Button>
+                  ) : null}
+                </div>
                 <Input
                   id='direct-squid-amount'
                   inputMode='decimal'

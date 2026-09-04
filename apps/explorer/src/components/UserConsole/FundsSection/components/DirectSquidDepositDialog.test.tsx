@@ -397,6 +397,22 @@ describe("DirectSquidDepositDialog safety integration", () => {
     expect(JSON.stringify(renderer.toJSON())).toContain("This wallet holds none of these tokens");
   });
 
+  it("fills the amount with the selected token's spendable balance", async () => {
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<DirectSquidDepositDialog accountId='account' onOpenChange={vi.fn()} open />);
+    });
+    await act(async () => button(renderer, "Max")?.props.onClick());
+    expect(amountInput(renderer).props.value).toBe("200");
+
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Source token" }).props.onChange({ target: { value: USDT } });
+    });
+    await act(async () => button(renderer, "Max")?.props.onClick());
+    expect(amountInput(renderer).props.value).toBe("200");
+    expect(button(renderer, "Max")?.props["aria-label"]).toBe("Use the full USDT balance");
+  });
+
   it("uses the explicitly selected token as the reviewed and executed source", async () => {
     let renderer!: ReactTestRenderer;
     await act(async () => {
